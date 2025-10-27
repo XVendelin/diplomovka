@@ -5,7 +5,7 @@ map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
 % map: 1 = too steep (obstacle), 0 = flat, others = slope height cost
 
 %% Define waypoints
-waypoints = [40 45; 180 55; 40 100;
+waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
              size(map,1)-10, size(map,2)-10]; % goal
 
 %% Display map with waypoints
@@ -36,6 +36,8 @@ end
 %% Display full path
 figure;
 imshow(map, []); colormap('turbo'); colorbar;
+% map(map ~= 1) = 0;
+% imshow(map, []);
 hold on;
 plot(fullPath(:,2), fullPath(:,1), 'w-', 'LineWidth', 2);
 plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g');
@@ -50,7 +52,7 @@ function path = astar_height(map, start, goal)
     end
 
     % weight for how much height affects cost
-    alpha = 10;  % increase to make steep terrain less desirable
+    alpha = 40;  % increase to make steep terrain less desirable
 
     openSet = false(rows, cols);
     cameFrom = zeros(rows, cols, 2);
