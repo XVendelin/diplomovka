@@ -2,7 +2,6 @@ clc; clear; close all;
 
 %% Load map
 map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
-% map: 1 = too steep (obstacle), 0 = flat, others = slope height cost
 
 %% Define waypoints
 waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
@@ -28,7 +27,7 @@ for i = 1:(size(waypoints,1)-1)
         break;
     end
     if i > 1
-        segment = segment(2:end,:); % avoid overlap
+        segment = segment(2:end,:);
     end
     fullPath = [fullPath; segment];
 end
@@ -51,8 +50,7 @@ function path = astar_height(map, start, goal)
         return;
     end
 
-    % weight for how much height affects cost
-    alpha = 40;  % increase to make steep terrain less desirable
+    alpha = 40;
 
     openSet = false(rows, cols);
     cameFrom = zeros(rows, cols, 2);
@@ -84,16 +82,13 @@ function path = astar_height(map, start, goal)
                 if dr == 0 && dc == 0, continue; end
                 nr = current_r + dr; nc = current_c + dc;
                 if nr < 1 || nr > rows || nc < 1 || nc > cols, continue; end
-                if map(nr,nc) == 1, continue; end  % too steep, skip
+                if map(nr,nc) == 1, continue; end
 
-                % base movement cost (diagonal = sqrt(2))
                 baseCost = sqrt(dr^2 + dc^2);
 
-                % add height difference cost
                 elevationDiff = abs(map(nr,nc) - map(current_r,current_c));
                 elevationCost = alpha * elevationDiff;
 
-                % total movement cost
                 tentative_g = gScore(current_r, current_c) + baseCost + elevationCost;
 
                 if tentative_g < gScore(nr,nc)

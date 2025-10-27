@@ -2,7 +2,6 @@ clc; clear; close all;
 
 %% Load map
 map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
-% map: 1 = too steep (obstacle), 0 = flat, others = slope height cost
 
 %% Define waypoints
 waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
@@ -28,7 +27,7 @@ for i = 1:(size(waypoints,1)-1)
         break;
     end
     if i > 1
-        segment = segment(2:end,:); % avoid overlap
+        segment = segment(2:end,:);
     end
     fullPath = [fullPath; segment];
 end
@@ -52,11 +51,11 @@ function path = chomp_height(map, start, goal)
     end
 
     % ==== Parameters ====
-    N = 150;             % number of samples along the path
-    lambda = 2000;        % weight for terrain cost
-    alpha = 70;         % smoothness weight
-    eta = 0.0005;          % step size
-    maxIter = 400;       % iterations
+    N = 150;
+    lambda = 2000;
+    alpha = 70;
+    eta = 0.0005;
+    maxIter = 400;
 
     % ==== Initialize straight line ====
     path = [linspace(start(1), goal(1), N)', linspace(start(2), goal(2), N)'];
@@ -81,14 +80,11 @@ function path = chomp_height(map, start, goal)
 
             h = map(r,c);
 
-            % --- Hard obstacle avoidance ---
             if h >= 1
                 grad_terrain(j,:) = 1000 * rand(1,2);
                 continue;
             end
 
-            % --- Use the map value directly as repulsive strength ---
-            % Push away from high-cost zones using a finite difference look-ahead
             dr = 0; dc = 0;
             if r > 1 && r < rows
                 dr = (map(r+1,c) - map(r-1,c)) / 2;
@@ -97,39 +93,17 @@ function path = chomp_height(map, start, goal)
                 dc = (map(r,c+1) - map(r,c-1)) / 2;
             end
 
-            % Weighted by how "bad" the terrain already is
             grad_terrain(j,:) = lambda * h * [dr, dc];
         end
 
-        % Update step
         grad_total = grad_smooth + grad_terrain;
         path = path - eta * grad_total;
 
-        % Keep start/goal fixed
         path(1,:) = start;
         path(end,:) = goal;
 
-        % Clamp within map bounds
         path(:,1) = min(max(path(:,1), 1), rows);
         path(:,2) = min(max(path(:,2), 1), cols);
     end
 end
 
-
-%% --- Local gradient sampler for map height ---
-function g = gradient_sample(map, r, c, dim)
-    [rows, cols] = size(map);
-    if strcmp(dim,'r')
-        if r <= 1 || r >= rows
-            g = 0;
-        else
-            g = (map(r+1,c) - map(r-1,c)) / 2;
-        end
-    else
-        if c <= 1 || c >= cols
-            g = 0;
-        else
-            g = (map(r,c+1) - map(r,c-1)) / 2;
-        end
-    end
-end
