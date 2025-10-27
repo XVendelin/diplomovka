@@ -1,0 +1,135 @@
+clc; clear; close all;
+
+%% Load map
+map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
+% map: 1 = too steep (obstacle), 0 = flat, others = slope height cost
+
+%% Define waypoints
+waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
+             size(map,1)-10, size(map,2)-10]; % goal
+
+%% Display map with waypoints
+figure;
+imshow(map, []); colormap('turbo'); colorbar;
+hold on;
+plot(waypoints(:,2), waypoints(:,1), 'ro', 'MarkerSize',10,'MarkerFaceColor','r');
+text(waypoints(:,2)+3, waypoints(:,1), ...
+     arrayfun(@num2str,1:size(waypoints,1),'UniformOutput',false),'Color','w');
+title('Height Map with Waypoints (1 = too steep)');
+
+%% Compute CHOMP paths between all waypoints
+fullPath = [];
+for i = 1:(size(waypoints,1)-1)
+    start = waypoints(i,:);
+    goal = waypoints(i+1,:);
+    segment = chomp_height(map, start, goal);
+    if isempty(segment)
+        disp(['CHOMP failed between waypoint ', num2str(i), ' and ', num2str(i+1)]);
+        break;
+    end
+    if i > 1
+        segment = segment(2:end,:); % avoid overlap
+    end
+    fullPath = [fullPath; segment];
+end
+
+%% Display full path
+figure;
+imshow(map, []); colormap('turbo'); colorbar;
+hold on;
+plot(fullPath(:,2), fullPath(:,1), 'w-', 'LineWidth', 2);
+plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g');
+title('CHOMP Optimized Path with Height-Aware Cost');
+
+%% find path
+function path = chomp_height(map, start, goal)
+    [rows, cols] = size(map);
+
+    if map(start(1), start(2)) >= 1 || map(goal(1), goal(2)) >= 1
+        path = [];
+        warning('Start or goal is in an obstacle!');
+        return;
+    end
+
+    % ==== Parameters ====
+    N = 150;             % number of samples along the path
+    lambda = 2000;        % weight for terrain cost
+    alpha = 70;         % smoothness weight
+    eta = 0.0005;          % step size
+    maxIter = 400;       % iterations
+
+    % ==== Initialize straight line ====
+    path = [linspace(start(1), goal(1), N)', linspace(start(2), goal(2), N)'];
+
+    % ==== Laplacian (smoothness operator) ====
+    K = eye(N);
+    for i = 2:N-1
+        K(i, i-1:i+1) = [1 -2 1];
+    end
+
+    % ==== Optimization loop ====
+    for iter = 1:maxIter
+        grad_smooth = alpha * (K' * K * path);
+        grad_terrain = zeros(size(path));
+
+        for j = 2:N-1
+            r = round(path(j,1));
+            c = round(path(j,2));
+            if r < 1 || r > rows || c < 1 || c > cols
+                continue;
+            end
+
+            h = map(r,c);
+
+            % --- Hard obstacle avoidance ---
+            if h >= 1
+                grad_terrain(j,:) = 1000 * rand(1,2);
+                continue;
+            end
+
+            % --- Use the map value directly as repulsive strength ---
+            % Push away from high-cost zones using a finite difference look-ahead
+            dr = 0; dc = 0;
+            if r > 1 && r < rows
+                dr = (map(r+1,c) - map(r-1,c)) / 2;
+            end
+            if c > 1 && c < cols
+                dc = (map(r,c+1) - map(r,c-1)) / 2;
+            end
+
+            % Weighted by how "bad" the terrain already is
+            grad_terrain(j,:) = lambda * h * [dr, dc];
+        end
+
+        % Update step
+        grad_total = grad_smooth + grad_terrain;
+        path = path - eta * grad_total;
+
+        % Keep start/goal fixed
+        path(1,:) = start;
+        path(end,:) = goal;
+
+        % Clamp within map bounds
+        path(:,1) = min(max(path(:,1), 1), rows);
+        path(:,2) = min(max(path(:,2), 1), cols);
+    end
+end
+
+
+%% --- Local gradient sampler for map height ---
+function g = gradient_sample(map, r, c, dim)
+    [rows, cols] = size(map);
+    if strcmp(dim,'r')
+        if r <= 1 || r >= rows
+            g = 0;
+        else
+            g = (map(r+1,c) - map(r-1,c)) / 2;
+        end
+    else
+        if c <= 1 || c >= cols
+            g = 0;
+        else
+            g = (map(r,c+1) - map(r,c-1)) / 2;
+        end
+    end
+end
