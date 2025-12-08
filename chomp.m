@@ -1,20 +1,35 @@
 clc; clear; close all;
 
 %% Load map
-map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
+coords = [280 400; 280 520; 
+         400 520; 400 400];
+map = druhy('image.jpg', coords);
+
+nmap = map; 
+nmap(nmap ~= 1) = 0;
 
 %% Define waypoints
-waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
-             size(map,1)-10, size(map,2)-10]; % goal
+waypoints = [10 20;
+            100 10;
+            100 18;
+            10 30;
+            10 40;
+            100 28;
+            100 40;
+            10 50;
+            10 65;
+            100 55;
+            100 65;
+            10 75;
+            10 85;
+            100 75;
+            100 85;
+            10 95;
+            10 103;
+            100 95;
+            10 size(map,2)-10;
+            size(map,1)-20, size(map,2)-15]; % goal
 
-%% Display map with waypoints
-figure;
-imshow(map, []); colormap('turbo'); colorbar;
-hold on;
-plot(waypoints(:,2), waypoints(:,1), 'ro', 'MarkerSize',10,'MarkerFaceColor','r');
-text(waypoints(:,2)+3, waypoints(:,1), ...
-     arrayfun(@num2str,1:size(waypoints,1),'UniformOutput',false),'Color','w');
-title('Height Map with Waypoints (1 = too steep)');
 
 %% Compute CHOMP paths between all waypoints
 fullPath = [];
@@ -39,6 +54,13 @@ hold on;
 plot(fullPath(:,2), fullPath(:,1), 'w-', 'LineWidth', 2);
 plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g');
 title('CHOMP Optimized Path with Height-Aware Cost');
+%% Display full path
+figure;
+imshow(map, []);
+hold on;
+plot(fullPath(:,2), fullPath(:,1), 'r-', 'LineWidth', 2);
+plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g');
+title('CHOMP Optimized Path with Height-Aware Cost');
 
 %% find path
 function path = chomp_height(map, start, goal)
@@ -51,11 +73,11 @@ function path = chomp_height(map, start, goal)
     end
 
     % ==== Parameters ====
-    N = 150;
-    lambda = 2000;
-    alpha = 70;
+    N = 500;
+    lambda = 20;
+    alpha = 5;
     eta = 0.0005;
-    maxIter = 400;
+    maxIter = 1000;
 
     % ==== Initialize straight line ====
     path = [linspace(start(1), goal(1), N)', linspace(start(2), goal(2), N)'];

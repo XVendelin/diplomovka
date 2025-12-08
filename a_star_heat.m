@@ -1,6 +1,13 @@
 clc; clear; close all;
 
 %% Load map
+% map = druhy('image.jpg', [250 370; 220 550; 450 550; 450 350]);
+
+%% Define waypoints
+% waypoints = [40 45; 200 30; 40 65; 200 65; 40 90; 200 85; 40 120; 200 120; 40 150; 200 150; 40 size(map,2)-10;
+             % size(map,1)-10, size(map,2)-10]; % goal
+             
+%% Load map
 coords = [280 400; 280 520; 
          400 520; 400 400];
 map = druhy('image.jpg', coords);
@@ -30,44 +37,41 @@ waypoints = [10 20;
             10 size(map,2)-10;
             size(map,1)-20, size(map,2)-15]; % goal
 
-%% Compute A* path through all waypoints
+%% Compute path through all waypoints
 fullPath = [];
 for i = 1:(size(waypoints,1)-1)
     start = waypoints(i,:);
     goal = waypoints(i+1,:);
-    segment = astar_normal(map, start, goal);
-
+    segment = astar_height(map, start, goal);
     if isempty(segment)
         disp(['No path found between waypoint ', num2str(i), ' and ', num2str(i+1)]);
         break;
     end
-
     if i > 1
-        segment = segment(2:end,:); % avoid duplicate point
+        segment = segment(2:end,:);
     end
-
     fullPath = [fullPath; segment];
 end
 
 %% Display full path
 figure;
-imshow(nmap, []); 
+imshow(map, []); colormap('turbo'); colorbar;
+% map(map ~= 1) = 0;
+% imshow(map, []);
 hold on;
-plot(fullPath(:,2), fullPath(:,1), 'r-', 'LineWidth', 2);
+plot(fullPath(:,2), fullPath(:,1), 'w-', 'LineWidth', 2);
 plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g');
-title('A* Path');
+title('A* Path Considering Height Difficulty');
 
-
-%% ---- STANDARD NORMAL A* FUNCTION (NO HEIGHT COST) ----
-function path = astar_normal(map, start, goal)
-
+%% --- Height-aware A* function ---
+function path = astar_height(map, start, goal)
     [rows, cols] = size(map);
-
-    % Treat "1" as obstacle (same as you had)
     if map(start(1), start(2)) == 1 || map(goal(1), goal(2)) == 1
         path = [];
         return;
     end
+
+    alpha = 40;
 
     openSet = false(rows, cols);
     cameFrom = zeros(rows, cols, 2);
@@ -78,16 +82,11 @@ function path = astar_normal(map, start, goal)
     fScore(start(1), start(2)) = heuristic(start, goal);
     openSet(start(1), start(2)) = true;
 
-    % A*
     while any(openSet(:))
-        % Node with minimum fScore in openSet
-        maskedFS = fScore;
-        maskedFS(~openSet) = inf;
-        [~, idx] = min(maskedFS(:));
-        [cr, cc] = ind2sub(size(map), idx);
-        current = [cr, cc];
+        [~, idx] = min(fScore(:) + ~openSet(:)*1e6);
+        [current_r, current_c] = ind2sub(size(map), idx);
+        current = [current_r, current_c];
 
-        % Reached goal
         if all(current == goal)
             path = current;
             while any(cameFrom(path(1,1), path(1,2),:))
@@ -97,36 +96,35 @@ function path = astar_normal(map, start, goal)
             return;
         end
 
-        openSet(cr, cc) = false;
+        openSet(current_r, current_c) = false;
 
-        % Explore neighbors
         for dr = -1:1
             for dc = -1:1
                 if dr == 0 && dc == 0, continue; end
-                nr = cr + dr; nc = cc + dc;
+                nr = current_r + dr; nc = current_c + dc;
                 if nr < 1 || nr > rows || nc < 1 || nc > cols, continue; end
+                if map(nr,nc) == 1, continue; end
 
-                if map(nr, nc) == 1, continue; end % obstacle
+                baseCost = sqrt(dr^2 + dc^2);
 
-                cost = sqrt(dr^2 + dc^2); % normal 8-direction step cost
-                tentative = gScore(cr, cc) + cost;
+                elevationDiff = abs(map(nr,nc) - map(current_r,current_c));
+                elevationCost = alpha * elevationDiff;
 
-                if tentative < gScore(nr, nc)
+                tentative_g = gScore(current_r, current_c) + baseCost + elevationCost;
+
+                if tentative_g < gScore(nr,nc)
                     cameFrom(nr,nc,:) = current;
-                    gScore(nr,nc) = tentative;
-                    fScore(nr,nc) = tentative + heuristic([nr,nc], goal);
+                    gScore(nr,nc) = tentative_g;
+                    fScore(nr,nc) = tentative_g + heuristic([nr,nc], goal);
                     openSet(nr,nc) = true;
                 end
             end
         end
     end
-
-    % Failed to find path
     path = [];
 end
 
-
-%% ---- MANHATTAN HEURISTIC ----
+%% --- Heuristic (Manhattan) ---
 function h = heuristic(p, goal)
-    h = abs(p(1) - goal(1)) + abs(p(2) - goal(2));
+    h = abs(p(1)-goal(1)) + abs(p(2)-goal(2));
 end
