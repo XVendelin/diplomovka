@@ -17,25 +17,7 @@ nmap(nmap ~= 1) = 0;
 
 %% Define waypoints
 waypoints = [10 20;
-            100 10;
-            100 18;
-            10 30;
-            10 40;
-            100 28;
-            100 40;
-            10 50;
-            10 65;
-            100 55;
-            100 65;
-            10 75;
-            10 85;
-            100 75;
-            100 85;
-            10 95;
-            10 103;
-            100 95;
-            10 size(map,2)-10;
-            size(map,1)-20, size(map,2)-15]; % goal
+            100 10]; % goal
 
 %% Compute path through all waypoints
 fullPath = [];

@@ -9,9 +9,6 @@ coords = [280 400; 280 520;
          400 520; 400 400];
 map = druhy('image.jpg', coords);
 
-% map values: 0..1, with 1 meaning unaccessible
-obstacleMask = (map >= 1.0);
-
 %% Define waypoints
 waypoints = [10 20;
             100 10;
@@ -36,10 +33,10 @@ waypoints = [10 20;
 
 
 %% ---------- PARAMETERS ----------
-patchSize = 5;                 % 5x5 local vision
+patchSize = 9;                 % 5x5 local vision
 pad = floor(patchSize/2);
 nDirs = 8;
-maxSamplesPerPair = 3000;      % limit per waypoint pair
+maxSamplesPerPair = 6000;      % limit per waypoint pair
 alphaMove = 0.01;              % small weight for Euclidean move cost
 betaHeight = 1.0;              % weight for absolute height change (we want to minimize this)
 rng(0);
@@ -108,7 +105,7 @@ layers = [
 ];
 
 options = trainingOptions('sgdm', ...
-    'InitialLearnRate',1e-2, ...
+    'InitialLearnRate',1e-3, ...
     'MaxEpochs',500, ...
     'MiniBatchSize',128, ...
     'Shuffle','every-epoch', ...
