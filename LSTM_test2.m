@@ -1,10 +1,10 @@
 %% LSTM Robot Navigation Training - A* Path Following
-% Uses A* to generate optimal paths, then trains LSTM to follow them
+% Uses A* to generate optimal paths between WAYPOINTS, then trains LSTM to follow them
 
 clear; clc; close all;
 addpath("kinematika_MR");
 
-%% ========== LOAD MAP AND GENERATE PATH ==========
+%% ========== LOAD MAP ==========
 coords = [280 400; 280 520; 400 520; 400 400];
 map = druhy('image.jpg', coords);
 res = 0.1;  % map resolution [m/cell]
@@ -12,33 +12,69 @@ res = 0.1;  % map resolution [m/cell]
 fprintf('Map size: %d x %d\n', size(map,1), size(map,2));
 fprintf('Map range: [%.3f, %.3f]\n', min(map(:)), max(map(:)));
 
-% Define start and goal in MAP COORDINATES (pixels)
-start_map = [10 20];  % [row, col] - corresponds to ~[10, 20] in world
-goal_map = [100 8];  % [row, col] - corresponds to ~[8, 100] in world
+%% ========== WAYPOINTS ==========
+waypoints = [ ...
+    10 20;
+    100 10;
+    100 18;
+    10 30;
+    10 40;
+    100 28;
+    100 40;
+    10 50;
+    10 65;
+    100 55;
+    100 65;
+    10 75;
+    10 85;
+    100 75;
+    100 85;
+    10 95;
+    10 103;
+    100 95;
+    10 size(map,2)-10;
+    size(map,1)-20, size(map,2)-15
+];
 
-% Generate optimal path using A*
-fprintf('\nGenerating A* path...\n');
-optimalPath = astar_height(map, start_map, goal_map);
+%% ========== GENERATE MULTI-WAYPOINT A* PATH ==========
+fprintf('\nGenerating multi-waypoint A* path...\n');
 
-if isempty(optimalPath)
-    error('No valid path found! Check start/goal positions and map.');
+optimalPath = [];
+
+for i = 1:size(waypoints,1)-1
+    start_wp = waypoints(i,:);
+    goal_wp  = waypoints(i+1,:);
+    
+    segmentPath = astar_height(map, start_wp, goal_wp);
+    
+    if isempty(segmentPath)
+        error('No valid path between waypoint %d and %d', i, i+1);
+    end
+    
+    % Avoid duplicate junction points
+    if i > 1
+        segmentPath = segmentPath(2:end,:);
+    end
+    
+    optimalPath = [optimalPath; segmentPath];
 end
 
-fprintf('Path length: %d waypoints\n', size(optimalPath, 1));
+fprintf('Total path length: %d waypoints\n', size(optimalPath,1));
 
-% Convert path to world coordinates
-pathWorld = [(optimalPath(:,1) - 1) * res, (optimalPath(:,2) - 1) * res];
-% pathWorld = [pathWorld(:,2) pathWorld(:,1)];
+%% ========== CONVERT TO WORLD COORDINATES ==========
+pathWorld = [(optimalPath(:,1) - 1) * res, ...
+             (optimalPath(:,2) - 1) * res];
 
-% Visualization
+%% ========== VISUALIZATION ==========
 figure('Position', [100, 100, 1200, 500]);
+
 subplot(1,2,1);
 imshow(map, []); colormap('turbo'); colorbar;
 hold on;
 plot(optimalPath(:,2), optimalPath(:,1), 'w-', 'LineWidth', 3);
-plot(start_map(2), start_map(1), 'go', 'MarkerSize', 15, 'MarkerFaceColor', 'g');
-plot(goal_map(2), goal_map(1), 'r*', 'MarkerSize', 20, 'LineWidth', 2);
-title('A* Optimal Path');
+plot(waypoints(:,2), waypoints(:,1), 'ro', ...
+     'MarkerSize', 8, 'MarkerFaceColor', 'r');
+title('A* Path Through Waypoints');
 hold off;
 
 subplot(1,2,2);
@@ -54,148 +90,105 @@ drawnow;
 
 %% ========== CONFIGURATION ==========
 start_pos = pathWorld(1,:)';
-goal_pos = pathWorld(end,:)';
+goal_pos  = pathWorld(end,:)';
 
-% Local observation
 obs_radius = 1;
-obs_size = 10;
+obs_size   = 10;
 
-% Training parameters
-num_episodes = 150;
-max_steps = 20000;
-dt = 0.01;
-path_follow_distance = 100.0;  % Look-ahead distance for path following
-
-fprintf('\nStart: [%.2f, %.2f]\n', start_pos(1), start_pos(2));
-fprintf('Goal: [%.2f, %.2f]\n', goal_pos(1), goal_pos(2));
+num_episodes = 100;
+max_steps    = 20000;
+dt           = 0.01;
+path_follow_distance = 100.0;
 
 %% ========== DATA COLLECTION ==========
 fprintf('\nCollecting training data...\n');
 
 all_sequences = {};
-all_targets = {};
+all_targets   = {};
 success_count = 0;
 
 for ep = 1:num_episodes
-    % Random starting position along early part of path
-    start_idx = max(1, min(10, size(pathWorld,1)));
-    start_idx = randi([1, start_idx]);
     
-    init_pos = pathWorld(start_idx, :)';
+    start_idx = randi([1, min(10, size(pathWorld,1))]);
+    init_pos  = pathWorld(start_idx,:)';
     init_theta = randn * 0.2;
+    
     state = [init_pos; init_theta; 0; 0; 0.22; 0];
-    
     sequence = [];
-    targets = [];
+    targets  = [];
     current_path_idx = start_idx;
-    
-    try
-        for step = 1:max_steps
-            x = state(1);
-            y = state(2);
-            theta = state(3);
-            
-            % Find nearest point on path and look-ahead target
-            [current_path_idx, target_point] = findPathTarget(pathWorld, [x, y], ...
-                current_path_idx, path_follow_distance);
-            
-            % Extract local terrain
-            local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
-            
-            % Calculate features relative to path target
-            dx = target_point(1) - x;
-            dy = target_point(2) - y;
-            dist_to_target = sqrt(dx^2 + dy^2);
-            angle_to_target = atan2(dy, dx);
-            heading_error = wrapToPi(angle_to_target - theta);
-            
-            % Distance to final goal
-            dist_to_goal = norm(goal_pos - [x; y]);
-            
-            % Features: [dist_to_target, heading_error, dist_to_goal, v, omega, terrain]
-            terrain_vec = reshape(local_terrain, [], 1);
-            features = [theta; dist_to_target; heading_error; dist_to_goal; 
-                        state(4); state(5); terrain_vec];
 
-            
-            % Path-following controller with exploration
-            exploitation_rate = 0.8 + 0.2*(ep/num_episodes);
-            
-            if rand < exploitation_rate
-                M = pathFollowingController(state, target_point, local_terrain);
-            else
-                M = randn(4,1) * 2.5 + 1.5;  % Exploration
-            end
-            
-            M = max(min(M, 10), -10);
-            
-            % Store data
-            sequence = [sequence; features'];
-            targets = [targets; M'];
-            
-            % Simulate
-            state_new = trackedRobotDynamicsWithTerrain(state, M, dt, map, res);
-            
-            % Check if stuck
-            if norm(state_new(1:2) - state(1:2)) < 0.001
-                break;
-            end
-            
-            state = state_new;
-            
-            % Success if reached goal
-            if dist_to_goal < 0.1
-                fprintf('Episode %d: Reached goal in %d steps!\n', ep, step);
-                success_count = success_count + 1;
-                break;
-            end
-            
-            % Also succeed if made good progress along path
-            if current_path_idx >= size(pathWorld,1) - 10
-                fprintf('Episode %d: Reached end of path!\n', ep);
-                success_count = success_count + 1;
-                break;
-            end
+    for step = 1:max_steps
+        x = state(1); y = state(2); theta = state(3);
+
+        [current_path_idx, target_point] = findPathTarget( ...
+            pathWorld, [x y], current_path_idx, path_follow_distance);
+
+        local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
+
+        dx = target_point(1) - x;
+        dy = target_point(2) - y;
+        dist_to_target = hypot(dx, dy);
+        heading_error  = wrapToPi(atan2(dy, dx) - theta);
+        dist_to_goal   = norm(goal_pos - [x; y]);
+
+        terrain_vec = reshape(local_terrain, [], 1);
+
+        features = [
+            sin(theta);
+            cos(theta);
+            dist_to_target / path_follow_distance;
+            sin(heading_error);
+            cos(heading_error);
+            dist_to_goal / norm(goal_pos - start_pos);
+            state(4) / 5;
+            state(5) / 5;
+            terrain_vec
+            ];
+
+        exploitation_rate = 0.8 + 0.2*(ep/num_episodes);
+
+        if rand < exploitation_rate
+            M = pathFollowingController(state, target_point, local_terrain);
+        else
+            M = randn(4,1)*2.5 + 1.5;
         end
-    catch ME
-        fprintf('Episode %d error: %s\n', ep, ME.message);
-        continue;
+
+        M = max(min(M,10), -10);
+
+        sequence = [sequence; features'];
+        targets  = [targets; M'];
+
+        state_new = trackedRobotDynamicsWithTerrain(state, M, dt, map, res);
+
+        if norm(state_new(1:2) - state(1:2)) < 1e-3
+            break;
+        end
+
+        state = state_new;
+
+        if dist_to_goal < 0.1 || current_path_idx >= size(pathWorld,1)-10
+            success_count = success_count + 1;
+            break;
+        end
     end
-    
-    % Accept if made reasonable progress (moved forward on path)
-    progress = current_path_idx - start_idx;
-    if progress > 20 || dist_to_goal < 0.1
+
+    if current_path_idx - start_idx > 20 || dist_to_goal < 0.1
         all_sequences{end+1} = sequence;
-        all_targets{end+1} = targets;
-    end
-    
-    if mod(ep, 25) == 0
-        fprintf('Episodes: %d/%d | Sequences: %d | Success: %d\n', ...
-            ep, num_episodes, length(all_sequences), success_count);
+        all_targets{end+1}   = targets;
     end
 end
 
-fprintf('\n=== Collection Summary ===\n');
-fprintf('Sequences: %d | Success: %d\n', length(all_sequences), success_count);
-
-if isempty(all_sequences)
-    error('No training data collected!');
-end
+fprintf('Collected %d sequences | Success: %d\n', ...
+    numel(all_sequences), success_count);
 
 %% ========== PREPARE TRAINING DATA ==========
-X_train = cell(length(all_sequences), 1);
-Y_train = cell(length(all_sequences), 1);
+X_train = cellfun(@(x)x', all_sequences, 'UniformOutput', false);
+Y_train = cellfun(@(y)y', all_targets,   'UniformOutput', false);
 
-for i = 1:length(all_sequences)
-    X_train{i} = all_sequences{i}';
-    Y_train{i} = all_targets{i}';
-end
-
-input_size = size(X_train{1}, 1);
-fprintf('Input features: %d | Training sequences: %d\n', input_size, length(X_train));
+input_size = size(X_train{1},1);
 
 %% ========== BUILD & TRAIN LSTM ==========
-fprintf('\nBuilding LSTM...\n');
 
 % layers = [
 %     sequenceInputLayer(input_size)
@@ -222,30 +215,21 @@ fprintf('\nBuilding LSTM...\n');
 layers = buildLSTM(input_size);
 
 options = trainingOptions('adam', ...
-    'MaxEpochs', 100, ...
-    'MiniBatchSize', 8, ...
-    'InitialLearnRate', 0.001, ...
-    'LearnRateSchedule', 'piecewise', ...
-    'LearnRateDropFactor', 0.5, ...
-    'LearnRateDropPeriod', 12, ...
-    'GradientThreshold', 1, ...
+    'MaxEpochs', 1000, ...
+    'MiniBatchSize', 16, ...
+    'InitialLearnRate', 1e-3, ...
     'Shuffle', 'every-epoch', ...
-    'Verbose', false, ...
-    'Plots', 'training-progress');
+    'Plots', 'training-progress', ...
+    'Verbose', false);
 
-fprintf('Training...\n');
 net = trainNetwork(X_train, Y_train, layers, options);
 
 %% ========== TEST ==========
 fprintf('\n=== Testing ===\n');
 
-state = [10; 18.2; 0; 0; 0; 2.2; 0]*res;
+state = [10; 18.2; 0; 0; 0; 2.2; 0] * res;
 trajectory = state(1:2)';
 current_path_idx = 0.99;
-
-% Initialize sequence buffer for LSTM
-sequence_buffer = [];
-buffer_length = 100;  % Can increase for temporal context
 
 figure('Position', [100, 100, 1500, 600]);
 
@@ -253,79 +237,63 @@ for step = 1:max_steps
     x = state(1);
     y = state(2);
     theta = state(3);
-    
-    [current_path_idx, target_point] = findPathTarget(pathWorld, [x, y], ...
-        current_path_idx, path_follow_distance);
-    
-    local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
-    
-    dx = target_point(1) - x;
-    dy = target_point(2) - y;
-    dist_to_target = sqrt(dx^2 + dy^2);
-    angle_to_target = atan2(dy, dx);
-    heading_error = wrapToPi(angle_to_target - theta);
-    dist_to_goal = norm(goal_pos - [x; y]);
-    
-    terrain_vec = reshape(local_terrain, [], 1);
-    features = [theta; dist_to_target; heading_error; dist_to_goal; 
-            state(4); state(5); terrain_vec];
 
-    % Add to sequence buffer
-    sequence_buffer = [sequence_buffer; features'];
-    if size(sequence_buffer, 1) > buffer_length
-        sequence_buffer = sequence_buffer(end-buffer_length+1:end, :);
-    end
-    
-    % LSTM prediction - input format: [features x timesteps]
-    M_pred = predict(net, sequence_buffer');
-    
-    % Extract motor commands from last timestep
-    if size(M_pred, 2) > 1
-        M = M_pred(:, end);  % Last timestep
-    else
-        M = M_pred;
-    end
+    [current_path_idx, target_point] = findPathTarget( ...
+        pathWorld, [x, y], current_path_idx, path_follow_distance);
+
+    local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
+
+    dist_to_goal = norm(goal_pos - [x; y]);
+
+    M = pathFollowingController(state, target_point, local_terrain);
     M = max(min(M(:), 10), -10);
 
-    
     state = trackedRobotDynamicsWithTerrain(state, M, dt, map, res);
     trajectory = [trajectory; state(1:2)'];
-    
-    if mod(step, 5) == 0
+
+    % --- VISUALIZATION ---
+    if mod(step, 1) == 0
         subplot(1,3,1);
         imagesc(map); colormap gray; hold on;
         plot(pathWorld(:,2)/res, pathWorld(:,1)/res, 'c-', 'LineWidth', 2);
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
-        plot(start_pos(2)/res, start_pos(1)/res, 'go', 'MarkerSize', 12, 'MarkerFaceColor', 'g');
-        plot(goal_pos(2)/res, goal_pos(1)/res, 'r*', 'MarkerSize', 18, 'LineWidth', 2);
-        plot(y/res, x/res, 'yo', 'MarkerSize', 10, 'MarkerFaceColor', 'y');
-        plot(target_point(2)/res, target_point(1)/res, 'mx', 'MarkerSize', 12, 'LineWidth', 3);
-        legend('A* Path', 'Robot Path', 'Start', 'Goal', 'Robot', 'Target');
-        title(sprintf('Step %d | Goal: %.1fm', step, dist_to_goal));
+        plot(start_pos(2)/res, start_pos(1)/res, 'go', ...
+            'MarkerSize', 12, 'MarkerFaceColor', 'g');
+        plot(goal_pos(2)/res, goal_pos(1)/res, 'r*', ...
+            'MarkerSize', 18, 'LineWidth', 2);
+        plot(y/res, x/res, 'yo', ...
+            'MarkerSize', 10, 'MarkerFaceColor', 'y');
+        plot(target_point(2)/res, target_point(1)/res, 'mx', ...
+            'MarkerSize', 12, 'LineWidth', 3);
+        title(sprintf('Step %d | Goal: %.2fm', step, dist_to_goal));
         axis equal; axis tight; hold off;
-        
+
         subplot(1,3,2);
         bar(M); ylim([-12, 12]); grid on;
         title('Motor Torques'); ylabel('Nm');
-        xticklabels({'FL', 'FR', 'RL', 'RR'});
-        
+        xticklabels({'FL','FR','RL','RR'});
+
         subplot(1,3,3);
-        imagesc(local_terrain); colormap(gca, 'gray'); colorbar;
-        title('Local View'); axis equal; axis tight;
-        
+        imagesc(local_terrain, [min(map(:)) max(map(:))]);
+        colormap(gca, 'gray'); colorbar;
+        title('Local View');
+        axis equal; axis tight;
+
         drawnow;
     end
-    
+
     if dist_to_goal < 0.1
         fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
         break;
     end
-    
+
     if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
         fprintf('Stuck at step %d (%.2fm from goal)\n', step, dist_to_goal);
         break;
     end
 end
+
+
 
 %% ========== HELPER FUNCTIONS ==========
 

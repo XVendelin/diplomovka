@@ -42,11 +42,11 @@ function[result]=druhy(filename, coords)
     result(inside) = cropped(inside);
 
     % display
-    figure;
-    imshow(I); title('Full Image');
-    hold on; plot([cols; cols(1)], [rows; rows(1)], 'r-', 'LineWidth', 1); % polygon
-
-    figure;
-    imshow(result); title('Extracted Polygon');
+    % figure;
+    % imshow(I); title('Full Image');
+    % hold on; plot([cols; cols(1)], [rows; rows(1)], 'r-', 'LineWidth', 1); % polygon
+    % 
+    % figure;
+    % imshow(result); title('Extracted Polygon');
 
 end

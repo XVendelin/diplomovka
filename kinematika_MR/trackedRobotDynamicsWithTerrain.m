@@ -30,7 +30,7 @@ act_kd    = 300.0;
 
 % Terén (NORMALIZOVANÝ)
 alpha_max = deg2rad(30);   % max. ekvivalentný sklon
-occ_th    = 0.99;          % nepriechodný terén
+occ_th    = 1;          % nepriechodný terén
 
 %% === ROZBALENIE STAVU ===
 x     = state(1);
