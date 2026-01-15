@@ -153,8 +153,10 @@ agentOpts = rlSACAgentOptions(...
     'ExperienceBufferLength', 1e6, ...
     'MiniBatchSize', 256, ...
     'NumWarmStartSteps', 5000, ...
+    'SequenceLength', 20, ...      
     'TargetSmoothFactor', 0.005, ...
     'TargetUpdateFrequency', 1);
+
 
 agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;
 agentOpts.ActorOptimizerOptions.GradientThreshold = 1;
@@ -169,13 +171,14 @@ agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
 
 %% ========== TRAINING OPTIONS ==========
 trainOpts = rlTrainingOptions(...
-    'MaxEpisodes', 500, ...
-    'MaxStepsPerEpisode', 5000, ...
+    'MaxEpisodes', 5000, ...
+    'MaxStepsPerEpisode', 500, ...
     'ScoreAveragingWindowLength', 10, ...
     'Verbose', false, ...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
-    'StopTrainingValue', 1000);
+    'StopTrainingValue', 1000, ...
+    'UseParallel', true);
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting SAC Training ===\n');
@@ -408,76 +411,71 @@ function reward = calculateReward(state, target_point, goal_pos, terrain, ...
     % Heading alignment
     reward = reward - 0.1 * abs(heading_error);
     
-    % Collision penalty
-    center = ceil(size(terrain,1)/2);
-    if terrain(center, center) > 0.7
-        reward = reward - 10;
-    end
-    
-    % Obstacle proximity penalty
-    terrain_ahead = terrain(center-1:center+1, center+1:end);
-    if mean(terrain_ahead(:)) > 0.5
-        reward = reward - 2;
-    end
-    
+    % % Collision penalty
+    % center = ceil(size(terrain,1)/2);
+    % if terrain(center, center) > 0.9
+    %     reward = reward - 10;
+    % end
+    % 
+    % % Obstacle proximity penalty
+    % terrain_ahead = terrain(center-1:center+1, center+1:end);
+    % if mean(terrain_ahead(:)) > 0.7
+    %     reward = reward - 2;
+    % end
+    % 
     % Small time penalty
     reward = reward - 0.01;
 end
 
 function net = buildActorNetwork(numObs)
-    % Shared feature extraction layers
     commonPath = [
-        featureInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(256, 'Name', 'fc_common1')
-        reluLayer('Name', 'relu_common1')
-        fullyConnectedLayer(256, 'Name', 'fc_common2')
-        reluLayer('Name', 'relu_common2')
+        sequenceInputLayer(numObs, 'Name', 'observation')
+        fullyConnectedLayer(256, 'Name', 'fc_pre_lstm')
+        reluLayer('Name', 'relu_pre')
+        % Change 'last' to 'sequence' here:
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm') 
         fullyConnectedLayer(128, 'Name', 'fc_common3')
         reluLayer('Name', 'relu_common3')
     ];
     
-    % Mean path
+    % Mean path (same as before)
     meanPath = [
         fullyConnectedLayer(4, 'Name', 'mean_fc')
         tanhLayer('Name', 'mean_tanh')
-        scalingLayer('Scale', 10, 'Name', 'mean_scale')  % Scale to [-10, 10]
+        scalingLayer('Scale', 10, 'Name', 'mean_scale')
     ];
     
-    % Standard deviation path
+    % Std path (same as before)
     stdPath = [
         fullyConnectedLayer(4, 'Name', 'std_fc')
-        softplusLayer('Name', 'std_softplus')  % Ensure positive std
+        softplusLayer('Name', 'std_softplus')
     ];
     
-    % Build the network
     net = layerGraph(commonPath);
     net = addLayers(net, meanPath);
     net = addLayers(net, stdPath);
-    
-    % Connect layers
     net = connectLayers(net, 'relu_common3', 'mean_fc');
     net = connectLayers(net, 'relu_common3', 'std_fc');
 end
 
 function net = buildCriticNetwork(numObs)
-    % State path
     statePath = [
-        featureInputLayer(numObs, 'Name', 'state')
+        sequenceInputLayer(numObs, 'Name', 'state')
         fullyConnectedLayer(256, 'Name', 'fc1')
         reluLayer('Name', 'relu1')
     ];
     
-    % Action path
     actionPath = [
-        featureInputLayer(4, 'Name', 'action')
+        sequenceInputLayer(4, 'Name', 'action')
         fullyConnectedLayer(256, 'Name', 'fc2')
+        reluLayer('Name', 'relu_act')
     ];
     
-    % Common path
     commonPath = [
         additionLayer(2, 'Name', 'add')
-        reluLayer('Name', 'relu2')
-        fullyConnectedLayer(256, 'Name', 'fc3')
+        % Change 'last' to 'sequence' here:
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'critic_lstm')
+        fullyConnectedLayer(128, 'Name', 'fc3')
         reluLayer('Name', 'relu3')
         fullyConnectedLayer(1, 'Name', 'output')
     ];
@@ -485,9 +483,8 @@ function net = buildCriticNetwork(numObs)
     net = layerGraph(statePath);
     net = addLayers(net, actionPath);
     net = addLayers(net, commonPath);
-    
     net = connectLayers(net, 'relu1', 'add/in1');
-    net = connectLayers(net, 'fc2', 'add/in2');
+    net = connectLayers(net, 'relu_act', 'add/in2');
 end
 
 function [idx, target] = findPathTarget(path, pos, current_idx, lookahead)
