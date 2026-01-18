@@ -147,16 +147,14 @@ actor = rlContinuousGaussianActor(actorNetwork, obsInfo, actInfo, ...
     'ActionStandardDeviationOutputNames', 'std_softplus');
 
 % SAC agent options
-agentOpts = rlSACAgentOptions(...
+agentOpts = rlSACAgentOptions( ...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 256*2, ...
+    'MiniBatchSize', 256, ...
     'NumWarmStartSteps', 5000, ...
-    'SequenceLength', 10, ...      
     'TargetSmoothFactor', 0.005, ...
     'TargetUpdateFrequency', 1);
-
 
 agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;
 agentOpts.ActorOptimizerOptions.GradientThreshold = 1;
@@ -165,6 +163,7 @@ agentOpts.CriticOptimizerOptions(1).LearnRate = 3e-4;
 agentOpts.CriticOptimizerOptions(1).GradientThreshold = 1;
 agentOpts.CriticOptimizerOptions(2).LearnRate = 3e-4;
 agentOpts.CriticOptimizerOptions(2).GradientThreshold = 1;
+
 
 % Create agent
 agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
@@ -234,7 +233,7 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     % --- VISUALIZATION ---
-    if mod(step, 1) == 0
+    if mod(step, 10) == 0
         subplot(1,3,1);
         imagesc(map); colormap gray; hold on;
         plot(pathWorld(:,2)/res, pathWorld(:,1)/res, 'c-', 'LineWidth', 2);
@@ -428,62 +427,67 @@ function reward = calculateReward(state, target_point, goal_pos, terrain, ...
 end
 
 function net = buildActorNetwork(numObs)
-    commonPath = [
-        sequenceInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(256, 'Name', 'fc_pre_lstm')
-        reluLayer('Name', 'relu_pre')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm') 
-        fullyConnectedLayer(128, 'Name', 'fc_common3')
-        reluLayer('Name', 'relu_common3')
+
+    input = featureInputLayer(numObs, 'Name', 'observation');
+
+    common = [
+        fullyConnectedLayer(256, 'Name', 'fc1')
+        reluLayer('Name', 'relu1')
+        fullyConnectedLayer(256, 'Name', 'fc2')
+        reluLayer('Name', 'relu2')
     ];
-    
-    % Mean path (same as before)
+
     meanPath = [
         fullyConnectedLayer(4, 'Name', 'mean_fc')
         tanhLayer('Name', 'mean_tanh')
         scalingLayer('Scale', 10, 'Name', 'mean_scale')
     ];
-    
-    % Std path (same as before)
+
     stdPath = [
         fullyConnectedLayer(4, 'Name', 'std_fc')
         softplusLayer('Name', 'std_softplus')
     ];
-    
-    net = layerGraph(commonPath);
+
+    net = layerGraph(input);
+    net = addLayers(net, common);
     net = addLayers(net, meanPath);
     net = addLayers(net, stdPath);
-    net = connectLayers(net, 'relu_common3', 'mean_fc');
-    net = connectLayers(net, 'relu_common3', 'std_fc');
+
+    net = connectLayers(net, 'observation', 'fc1');
+    net = connectLayers(net, 'relu2', 'mean_fc');
+    net = connectLayers(net, 'relu2', 'std_fc');
 end
 
+
 function net = buildCriticNetwork(numObs)
+
     statePath = [
-        sequenceInputLayer(numObs, 'Name', 'state')
-        fullyConnectedLayer(256, 'Name', 'fc1')
-        reluLayer('Name', 'relu1')
+        featureInputLayer(numObs, 'Name', 'state')
+        fullyConnectedLayer(256, 'Name', 'state_fc1')
+        reluLayer('Name', 'state_relu1')
     ];
-    
+
     actionPath = [
-        sequenceInputLayer(4, 'Name', 'action')
-        fullyConnectedLayer(256, 'Name', 'fc2')
-        reluLayer('Name', 'relu_act')
+        featureInputLayer(4, 'Name', 'action')
+        fullyConnectedLayer(256, 'Name', 'action_fc1')
+        reluLayer('Name', 'action_relu1')
     ];
-    
+
     commonPath = [
         additionLayer(2, 'Name', 'add')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'critic_lstm')
-        fullyConnectedLayer(128, 'Name', 'fc3')
-        reluLayer('Name', 'relu3')
+        fullyConnectedLayer(256, 'Name', 'fc_common')
+        reluLayer('Name', 'relu_common')
         fullyConnectedLayer(1, 'Name', 'output')
     ];
-    
+
     net = layerGraph(statePath);
     net = addLayers(net, actionPath);
     net = addLayers(net, commonPath);
-    net = connectLayers(net, 'relu1', 'add/in1');
-    net = connectLayers(net, 'relu_act', 'add/in2');
+
+    net = connectLayers(net, 'state_relu1', 'add/in1');
+    net = connectLayers(net, 'action_relu1', 'add/in2');
 end
+
 
 function [idx, target] = findPathTarget(path, pos, current_idx, lookahead)
     dists = sqrt(sum((path - pos).^2, 2));
