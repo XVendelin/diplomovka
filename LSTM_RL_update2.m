@@ -13,8 +13,8 @@ res = 0.1;  % map resolution [m/cell]
 start_pos = [10; 18] * res;
 goal_pos  = [100; 10] * res;
 
-obs_radius = 0.5;
-obs_size   = 10;
+obs_size   = 20;
+obs_radius = obs_size*res/2;
 
 dt           = 0.05;
 
@@ -104,6 +104,7 @@ fprintf('\n=== Starting SAC Training ===\n');
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== TEST TRAINED AGENT ==========
+addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 test_start = [10; 18] * res;
 test_goal = [100; 10] * res;
@@ -318,32 +319,32 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     sizex= ceil(0.5/res/2);
     sizey= ceil(0.5/res/2);
     center=ceil(size(terrain,1)/2);
-    
+
     hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
     hit_count = sum(hitbox(:)==1);
 
-    v = state(4);  
-    z = state(6);
-    zdot = state(7);
+    % v = state(4);  
+    % z = state(6);
+    % zdot = state(7);
     
     % vzdialenost
     reward = -0.2 * dist_to_goal;
 
     % zasah do vinica
-    reward = reward - 0.5 * hit_count;
+    reward = reward - 2 * hit_count;
     
     % smerovanie
     reward = reward - 0.1 * abs(heading_error);
 
     % rychlost
-    terrain_difficulty = mean(terrain(:));  
-    safe_speed = 1.0 * (1 - terrain_difficulty);
-    speed_penalty = (v - safe_speed)^2;
-    reward = reward - 0.5 * speed_penalty;
+    % terrain_difficulty = mean(terrain(:));  
+    % safe_speed = 1.0 * (1 - terrain_difficulty);
+    % speed_penalty = (v - safe_speed)^2;
+    % reward = reward - 0.5 * speed_penalty;
 
     % stabilita zmeny vysky
-    reward = reward - 0.2 * abs(z - 0.22);
-    reward = reward - 0.1 * abs(zdot);
+    % reward = reward - 0.2 * abs(z - 0.22);
+    % reward = reward - 0.1 * abs(zdot);
 
     % casova penalizacia
     reward = reward - 0.01;
