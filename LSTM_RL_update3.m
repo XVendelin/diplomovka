@@ -109,8 +109,8 @@ agent_cpu = setLearnableParameters( ...
     agent, dlupdate(@gather, getLearnableParameters(agent)));
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
-test_start = [10; 18] * res;
-test_goal = [100; 10] * res;
+test_goal = [10; 18] * res;
+test_start = [100; 10] * res;
 
 state = [test_start; 0; 0; 0; 0; 0];
 trajectory = state(1:2)';
@@ -197,109 +197,110 @@ end
 %% ========== ENVIRONMENT FUNCTIONS ==========
 
 function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignals, envData)
-    persistent state trajectory step_count
+    % STEPFCN - Custom RL environment step function for tracked robot
+    % Uses loggedSignals to store per-episode state, trajectory, and step count
     
-    if isempty(state)
-        [state, trajectory, step_count] = resetEnv(envData);
-    end
-    
-    step_count = step_count + 1;
-    
-    % Apply action
+    % --- Unpack current state from loggedSignals ---
+    state      = loggedSignals.state;
+    trajectory = loggedSignals.trajectory;
+    step_count = loggedSignals.step_count + 1;
+
+    % --- Apply action (motor torques) ---
     M = action;
     state = trackedRobotDynamics(state, M, envData.dt);
-    
-    x = state(1); y = state(2); theta = state(3);
+
+    x     = state(1);
+    y     = state(2);
+    theta = state(3);
     trajectory = [trajectory; x, y];
-    
-    % Get observation
-    
+
+    % --- Extract local terrain ---
     local_terrain = extractLocalTerrain(x, y, envData.map, envData.res, ...
-                                       envData.obs_radius, envData.obs_size);
-    
-    goal_dx = envData.goal_pos(1) - x;
-    goal_dy = envData.goal_pos(2) - y;
-    goal_heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
-    dist_to_goal   = norm(envData.goal_pos - [x; y]);
-    
+                                        envData.obs_radius, envData.obs_size);
     terrain_vec = reshape(local_terrain, [], 1);
-    
+
+    % --- Compute goal-related quantities ---
+    goal_dx = loggedSignals.goal_pos(1) - x;
+    goal_dy = loggedSignals.goal_pos(2) - y;
+    dist_to_goal = hypot(goal_dx, goal_dy);
+    heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
+
+    % --- Build observation ---
     nextObs = [
         sin(theta);
         cos(theta);
-        sin(goal_heading_error);
-        cos(goal_heading_error);
-        dist_to_goal / norm(envData.goal_pos - envData.start_pos);
-        state(4) / 5;
-        state(5) / 5;
+        sin(heading_error);
+        cos(heading_error);
+        dist_to_goal / norm(loggedSignals.goal_pos - loggedSignals.start_pos);
+        state(4)/5; 
+        state(5)/5;
         terrain_vec
     ];
-    
-    % Calculate reward
-    reward = calculateReward(state, envData.goal_pos, local_terrain, ...
-                         dist_to_goal, goal_heading_error);
-    
-    % Check termination + goal reward
+
+    % --- Compute reward ---
+    reward = calculateReward(state, loggedSignals.goal_pos, local_terrain, ...
+                             dist_to_goal, heading_error);
+
+    % --- Check termination conditions ---
     isDone = false;
+
     if dist_to_goal < 0.1
         reward = reward + 1000;  % Big bonus for reaching goal
         isDone = true;
     elseif step_count >= 5000
         isDone = true;
-    elseif any(isnan(state)) || any(isinf(state)) % Non real number penalty
+    elseif any(isnan(state)) || any(isinf(state))
         reward = reward - 100;
         isDone = true;
     end
-    
-    % Check if stuck
-    if size(trajectory, 1) > 100
+
+    % --- Check if stuck ---
+    if size(trajectory,1) > 100
         if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.3
             reward = reward - 50;
             isDone = true;
         end
     end
-    
-    loggedSignals = [];
-    
-    if isDone
-        state = [];
-    end
+
+    % --- Update loggedSignals for next step ---
+    loggedSignals.state      = state;
+    loggedSignals.trajectory = trajectory;
+    loggedSignals.step_count = step_count;
 end
 
 function [initObs, loggedSignals] = resetFcn(envData)
-    [state, ~, ~] = resetEnv(envData);
+    % Randomly flip start/goal
+    if rand < 0.5
+        loggedSignals.start_pos = envData.start_pos;
+        loggedSignals.goal_pos  = envData.goal_pos;
+    else
+        loggedSignals.start_pos = envData.goal_pos;
+        loggedSignals.goal_pos  = envData.start_pos;
+    end
 
-    x     = state(1);
-    y     = state(2);
-    theta = state(3);
+    init_theta = randn*0.2;
+    state = [loggedSignals.start_pos; init_theta; 0; 0; 0; 0];
 
-    % Local terrain observation
-    local_terrain = extractLocalTerrain( ...
-        x, y, envData.map, envData.res, ...
-        envData.obs_radius, envData.obs_size);
+    loggedSignals.state = state;
+    loggedSignals.trajectory = loggedSignals.start_pos';
+    loggedSignals.step_count = 0;
 
+    x = state(1); y = state(2); theta = state(3);
+    local_terrain = extractLocalTerrain(x, y, envData.map, envData.res, envData.obs_radius, envData.obs_size);
     terrain_vec = reshape(local_terrain, [], 1);
 
-    % Goal-related quantities
-    goal_dx = envData.goal_pos(1) - x;
-    goal_dy = envData.goal_pos(2) - y;
+    goal_dx = loggedSignals.goal_pos(1) - x;
+    goal_dy = loggedSignals.goal_pos(2) - y;
     dist_to_goal = hypot(goal_dx, goal_dy);
+    heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
 
-    goal_heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
-
-    % Initial observation
     initObs = [
-        sin(theta);
-        cos(theta);
-        sin(goal_heading_error);
-        cos(goal_heading_error);
-        dist_to_goal / norm(envData.goal_pos - envData.start_pos);
-        state(4) / 5;
-        state(5) / 5;
+        sin(theta); cos(theta);
+        sin(heading_error); cos(heading_error);
+        dist_to_goal / norm(loggedSignals.goal_pos - loggedSignals.start_pos);
+        0; 0;
         terrain_vec
     ];
-
-    loggedSignals = [];
 end
 
 
