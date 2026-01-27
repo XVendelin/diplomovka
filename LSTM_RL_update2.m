@@ -70,7 +70,7 @@ agentOpts = rlSACAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 256*2, ...
+    'MiniBatchSize', 1024*2, ...
     'NumWarmStartSteps', 5000, ...
     'SequenceLength', 10, ...      
     'TargetSmoothFactor', 0.005, ...
@@ -97,13 +97,16 @@ trainOpts = rlTrainingOptions(...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
     'StopTrainingValue', 1000, ...
-    'UseParallel', true);
+    'UseParallel', false);
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting SAC Training ===\n');
+agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters(agent)));
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== TEST TRAINED AGENT ==========
+agent_cpu = setLearnableParameters( ...
+    agent, dlupdate(@gather, getLearnableParameters(agent)));
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 test_start = [10; 18] * res;
@@ -112,7 +115,7 @@ test_goal = [100; 10] * res;
 state = [test_start; 0; 0; 0; 0; 0];
 trajectory = state(1:2)';
 
-max_test_steps = 20000;
+max_test_steps = 2000;
 
 figure('Position', [100, 100, 1500, 600]);
 
@@ -323,7 +326,7 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
     hit_count = sum(hitbox(:)==1);
 
-    % v = state(4);  
+    v = state(4);  
     % z = state(6);
     % zdot = state(7);
     
@@ -337,17 +340,17 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     reward = reward - 0.1 * abs(heading_error);
 
     % rychlost
-    % terrain_difficulty = mean(terrain(:));  
-    % safe_speed = 1.0 * (1 - terrain_difficulty);
-    % speed_penalty = (v - safe_speed)^2;
-    % reward = reward - 0.5 * speed_penalty;
+    terrain_difficulty = mean(hitbox(:),"all");  
+    safe_speed = 1 * (1 - terrain_difficulty);
+    speed_penalty = 2 * (v - safe_speed)^2;
+    reward = reward - 0.5 * speed_penalty;
 
     % stabilita zmeny vysky
     % reward = reward - 0.2 * abs(z - 0.22);
     % reward = reward - 0.1 * abs(zdot);
 
     % casova penalizacia
-    reward = reward - 0.01;
+    % reward = reward - 0.01;
 
 end
 
