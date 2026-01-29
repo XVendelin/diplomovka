@@ -178,8 +178,9 @@ for step = 1:max_test_steps
 
         subplot(1,4,3);
         bar([v, omega]); ylim([-5, 5]); grid on;
-        title('Speeds'); ylabel('Nm');
-        xticklabels({'Speed','Omega'});
+        title('Speeds');
+        xticklabels({'Linear','Angular'});
+        ylabel('m/s   |   rad/s');
 
         subplot(1,4,4);
         imagesc(local_terrain, [min(map(:)) max(map(:))]);
