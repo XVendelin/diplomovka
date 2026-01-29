@@ -123,6 +123,8 @@ for step = 1:max_test_steps
     x = state(1);
     y = state(2);
     theta = state(3);
+    v = state(4);
+    omega = state(5);
 
 
     local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
@@ -157,24 +159,29 @@ for step = 1:max_test_steps
 
     % --- VISUALIZATION ---
     if mod(step, 1) == 0
-        subplot(1,3,1);
+        subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
         plot(test_start(2)/res, test_start(1)/res, 'go', ...
             'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
             'MarkerSize', 18, 'LineWidth', 2);
-        drawTrackedRobot(x, y, theta, 0.25*2, 0.25, res);
+        drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
 
         title(sprintf('Step %d | Goal: %.2fm', step, dist_to_goal));
         axis equal; axis tight; hold off;
 
-        subplot(1,3,2);
+        subplot(1,4,2);
         bar(M); ylim([-12, 12]); grid on;
         title('Motor Torques'); ylabel('Nm');
         xticklabels({'FL','FR','RL','RR'});
 
-        subplot(1,3,3);
+        subplot(1,4,3);
+        bar([v, omega]); ylim([-5, 5]); grid on;
+        title('Speeds'); ylabel('Nm');
+        xticklabels({'Speed','Omega'});
+
+        subplot(1,4,4);
         imagesc(local_terrain, [min(map(:)) max(map(:))]);
         colormap(gca, 'gray'); colorbar;
         title('Local View');
@@ -437,10 +444,10 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
 
     % Robot corners (rectangle)
     corners_robot = [
-        -L/2, -y_offset;
-         L/2, -y_offset;
-         L/2,  y_offset;
-        -L/2,  y_offset
+        -L, -y_offset;
+         L, -y_offset;
+         L,  y_offset;
+        -L,  y_offset
     ];
 
     % Rotation matrix
@@ -463,8 +470,8 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
         'LineWidth', 0.1);
 
     % --- Draw center-to-front line ---
-    front_x = x + (L/2) * cos(theta);  % front point X
-    front_y = y + (L/2) * sin(theta);  % front point Y
+    front_x = x + (L) * cos(theta);  % front point X
+    front_y = y + (L) * sin(theta);  % front point Y
 
     line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);  % black line
 end
