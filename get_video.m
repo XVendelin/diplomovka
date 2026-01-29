@@ -1,4 +1,4 @@
-%% ========== TEST TRAINED AGENT (WITH VIDEO RECORDING) ==========
+%% ========== TEST TRAINED AGENT (WITH VIDEO + GIF RECORDING) ==========
 load("2_20_2.mat");
 
 agent_cpu = setLearnableParameters( ...
@@ -15,12 +15,17 @@ trajectory = state(1:2)';
 
 max_test_steps = 2000;
 
-%% ---------- VIDEO SETUP ----------
+%% ---------- VIDEO + GIF SETUP ----------
 videoFile = 'agent_test.mp4';
+gifFile   = 'agent_test.gif';
+
 vwriter = VideoWriter(videoFile, 'MPEG-4');
 vwriter.FrameRate = 10;
 open(vwriter);
-% ---------------------------------
+
+gifDelay = 1 / vwriter.FrameRate;
+isFirstGifFrame = true;
+% ---------------------------------------
 
 figure('Position', [100, 100, 1500, 600]);
 
@@ -60,45 +65,55 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     %% ---------- VISUALIZATION ----------
-    if mod(step, 1) == 0
-        clf;
+    clf;
 
-        subplot(1,4,1);
-        imagesc(map); colormap gray; hold on;
-        plot(trajectory(:,2)/res, trajectory(:,1)/res, ...
-            'g-', 'LineWidth', 2);
-        plot(test_start(2)/res, test_start(1)/res, ...
-            'go', 'MarkerSize', 8, 'MarkerFaceColor', 'g');
-        plot(test_goal(2)/res, test_goal(1)/res, ...
-            'r*', 'MarkerSize', 18, 'LineWidth', 2);
-        drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
-        title(sprintf('Step %d | Goal: %.2f m', step, dist_to_goal));
-        axis equal; axis tight; hold off;
+    subplot(1,4,1);
+    imagesc(map); colormap gray; hold on;
+    plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
+    plot(test_start(2)/res, test_start(1)/res, 'go', ...
+        'MarkerSize', 8, 'MarkerFaceColor', 'g');
+    plot(test_goal(2)/res, test_goal(1)/res, ...
+        'r*', 'MarkerSize', 18, 'LineWidth', 2);
+    drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
+    title(sprintf('Step %d | Goal: %.2f m', step, dist_to_goal));
+    axis equal tight; hold off;
 
-        subplot(1,4,2);
-        bar(M); ylim([-12, 12]); grid on;
-        title('Motor Torques'); ylabel('Nm');
-        xticklabels({'FL','FR','RL','RR'});
+    subplot(1,4,2);
+    bar(M); ylim([-12 12]); grid on;
+    title('Motor Torques'); ylabel('Nm');
+    xticklabels({'FL','FR','RL','RR'});
 
-        subplot(1,4,3);
-        bar([v, omega]); ylim([-5, 5]); grid on;
-        title('Speeds');
-        xticklabels({'Linear','Angular'});
-        ylabel('m/s   |   rad/s');
+    subplot(1,4,3);
+    bar([v omega]); ylim([-5 5]); grid on;
+    title('Speeds');
+    xticklabels({'Linear','Angular'});
+    ylabel('m/s   |   rad/s');
 
-        subplot(1,4,4);
-        imagesc(local_terrain, [min(map(:)) max(map(:))]);
-        colormap(gca, 'gray'); colorbar;
-        title('Local View');
-        axis equal; axis tight;
+    subplot(1,4,4);
+    imagesc(local_terrain, [min(map(:)) max(map(:))]);
+    colormap(gca, 'gray'); colorbar;
+    title('Local View');
+    axis equal tight;
 
-        drawnow;
+    drawnow;
 
-        % ---- WRITE FRAME TO VIDEO ----
-        frame = getframe(gcf);
-        writeVideo(vwriter, frame);
+    %% ---------- WRITE VIDEO + GIF ----------
+    frame = getframe(gcf);
+
+    % MP4
+    writeVideo(vwriter, frame);
+
+    % GIF
+    [im, cm] = rgb2ind(frame2im(frame), 256);
+    if isFirstGifFrame
+        imwrite(im, cm, gifFile, 'gif', ...
+            'LoopCount', inf, 'DelayTime', gifDelay);
+        isFirstGifFrame = false;
+    else
+        imwrite(im, cm, gifFile, 'gif', ...
+            'WriteMode', 'append', 'DelayTime', gifDelay);
     end
-    %% ------------------------------------
+    %% --------------------------------------
 
     if dist_to_goal < 0.1
         fprintf('SUCCESS! Goal reached in %d steps (%.2f m)\n', ...
@@ -115,7 +130,8 @@ end
 
 %% ---------- CLOSE VIDEO ----------
 close(vwriter);
-fprintf('Video saved to: %s\n', videoFile);
+fprintf('MP4 saved to: %s\n', videoFile);
+fprintf('GIF saved to: %s\n', gifFile);
 close all;
 
 %% ========== HELPER FUNCTIONS ==========
