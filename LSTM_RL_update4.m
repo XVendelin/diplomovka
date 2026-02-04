@@ -5,13 +5,19 @@ clear; clc; close all;
 addpath("kinematika_MR");
 
 %% ========== LOAD MAP ==========
-coords = [280 400; 280 520; 400 520; 400 400];
-map = druhy('image.jpg', coords);
+coords1 = [475 1100; 475 1200; 575 1200; 575 1100];
+map1 = druhy('image.jpg', coords);
+coords2 = [280 400; 280 520; 400 520; 400 400];
+map2 = druhy('image.jpg', coords);
 res = 0.1;  % map resolution [m/cell]
+% imagesc(map); colormap gray
 
 %% ========== CONFIGURATION ==========
-start_pos = [10; 18] * res;
-goal_pos  = [100; 10] * res;
+start_pos1 = [10; 18] * res;
+goal_pos1  = [100; 10] * res;
+
+start_pos2 = [85; 10] * res;
+goal_pos2  = [69; 95] * res;
 
 obs_size   = 20;
 obs_radius = obs_size*res/2;
@@ -35,13 +41,19 @@ actInfo.Name = 'Motor Torques';
 
 % Create environment data structure to pass to functions
 envData = struct();
-envData.map = map;
-envData.res = res;
-envData.start_pos = start_pos;
-envData.goal_pos = goal_pos;
+envData.scenarios(1).map       = map1;
+envData.scenarios(1).start_pos = start_pos1;
+envData.scenarios(1).goal_pos  = goal_pos1;
+
+envData.scenarios(2).map       = map2;
+envData.scenarios(2).start_pos = start_pos2;
+envData.scenarios(2).goal_pos  = goal_pos2;
+
+envData.res        = res;
 envData.obs_radius = obs_radius;
-envData.obs_size = obs_size;
-envData.dt = dt;
+envData.obs_size   = obs_size;
+envData.dt         = dt;
+
 
 % Create custom environment
 env = rlFunctionEnv(obsInfo, actInfo, ...
@@ -109,8 +121,9 @@ agent_cpu = setLearnableParameters( ...
     agent, dlupdate(@gather, getLearnableParameters(agent)));
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
-test_start = [10; 94] * res;
-test_goal = [100; 84] * res;
+test_start = [85; 10] * res;
+test_goal = [69; 95] * res;
+map = map2;
 
 state = [test_start; 0; 0; 0; 0; 0];
 trajectory = state(1:2)';
@@ -206,15 +219,12 @@ end
 %% ========== ENVIRONMENT FUNCTIONS ==========
 
 function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignals, envData)
-    % STEPFCN - Custom RL environment step function for tracked robot
-    % Uses loggedSignals to store per-episode state, trajectory, and step count
+
     
-    % --- Unpack current state from loggedSignals ---
     state      = loggedSignals.state;
     trajectory = loggedSignals.trajectory;
     step_count = loggedSignals.step_count + 1;
 
-    % --- Apply action (motor torques) ---
     M = action;
     state = trackedRobotDynamics(state, M, envData.dt);
 
@@ -223,18 +233,15 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
     theta = state(3);
     trajectory = [trajectory; x, y];
 
-    % --- Extract local terrain ---
-    local_terrain = extractLocalTerrain(x, y, envData.map, envData.res, ...
+    local_terrain = extractLocalTerrain(x, y, loggedSignals.map, envData.res, ...
                                         envData.obs_radius, envData.obs_size);
     terrain_vec = reshape(local_terrain, [], 1);
 
-    % --- Compute goal-related quantities ---
     goal_dx = loggedSignals.goal_pos(1) - x;
     goal_dy = loggedSignals.goal_pos(2) - y;
     dist_to_goal = hypot(goal_dx, goal_dy);
     heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
 
-    % --- Build observation ---
     nextObs = [
         sin(theta);
         cos(theta);
@@ -246,11 +253,9 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
         terrain_vec
     ];
 
-    % --- Compute reward ---
     reward = calculateReward(state, loggedSignals.goal_pos, local_terrain, ...
                              dist_to_goal, heading_error);
 
-    % --- Check termination conditions ---
     isDone = false;
 
     if dist_to_goal < 0.1
@@ -278,24 +283,39 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
 end
 
 function [initObs, loggedSignals] = resetFcn(envData)
-    % Randomly flip start/goal
-    if rand < 0.5
-        loggedSignals.start_pos = envData.start_pos;
-        loggedSignals.goal_pos  = envData.goal_pos;
-    else
-        loggedSignals.start_pos = envData.goal_pos;
-        loggedSignals.goal_pos  = envData.start_pos;
-    end
 
-    init_theta = randn*pi;
+    % ---- Pick scenario at random ----
+    scenario_id = randi(numel(envData.scenarios));
+    scenario = envData.scenarios(scenario_id);
+
+    loggedSignals.map       = scenario.map;
+    if rand < 0.5
+        loggedSignals.start_pos = scenario.start_pos;
+        loggedSignals.goal_pos  = scenario.goal_pos;
+        loggedSignals.flipped   = 0;
+    else
+        loggedSignals.start_pos = scenario.goal_pos;
+        loggedSignals.goal_pos  = scenario.start_pos;
+        loggedSignals.flipped   = 1;
+    end
+    loggedSignals.scenario  = scenario_id;
+
+    % ---- Init ----
+    init_theta = rand * 2*pi;
     state = [loggedSignals.start_pos; init_theta; 0; 0; 0; 0];
 
-    loggedSignals.state = state;
+    loggedSignals.state      = state;
     loggedSignals.trajectory = loggedSignals.start_pos';
     loggedSignals.step_count = 0;
 
-    x = state(1); y = state(2); theta = state(3);
-    local_terrain = extractLocalTerrain(x, y, envData.map, envData.res, envData.obs_radius, envData.obs_size);
+    x = state(1); 
+    y = state(2); 
+    theta = state(3);
+
+    local_terrain = extractLocalTerrain( ...
+        x, y, loggedSignals.map, ...
+        envData.res, envData.obs_radius, envData.obs_size);
+
     terrain_vec = reshape(local_terrain, [], 1);
 
     goal_dx = loggedSignals.goal_pos(1) - x;
@@ -310,7 +330,13 @@ function [initObs, loggedSignals] = resetFcn(envData)
         0; 0;
         terrain_vec
     ];
+
+    % if loggedSignals.step_count == 0
+    %     fprintf("Episode start | Scenario %d, %d\n", loggedSignals.scenario, loggedSignals.flipped);
+    % end
+
 end
+
 
 
 
@@ -435,7 +461,6 @@ end
 
 function drawTrackedRobot(x, y, theta, L, y_offset, res)
 
-    % Robot corners (rectangle)
     corners_robot = [
         -L, -y_offset;
          L, -y_offset;
@@ -443,30 +468,25 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
         -L,  y_offset
     ];
 
-    % Rotation matrix
     R = [cos(theta) -sin(theta);
          sin(theta)  cos(theta)];
 
-    % Transform corners to world coordinates
     corners_world = (R * corners_robot')';
     corners_world(:,1) = corners_world(:,1) + x;
     corners_world(:,2) = corners_world(:,2) + y;
 
-    % World → map indices
-    col = corners_world(:,2) / res;   % Y → column
-    row = corners_world(:,1) / res;   % X → row
+    col = corners_world(:,2) / res;
+    row = corners_world(:,1) / res;
 
-    % Draw filled rectangle
     patch( ...
         col, row, 'r', ...
         'EdgeColor', 'r', ...
         'LineWidth', 0.1);
 
-    % --- Draw center-to-front line ---
-    front_x = x + (L) * cos(theta);  % front point X
-    front_y = y + (L) * sin(theta);  % front point Y
+    front_x = x + (L) * cos(theta);
+    front_y = y + (L) * sin(theta);
 
-    line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);  % black line
+    line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);
 end
 
 
