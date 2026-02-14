@@ -13,11 +13,21 @@ res = 0.1;  % map resolution [m/cell]
 % imagesc(map); colormap gray
 
 %% ========== CONFIGURATION ==========
-start_pos1 = [10; 18] * res;
-goal_pos1  = [100; 10] * res;
+% -------- Map 1 routes --------
+routes1(1).start = [10; 18] * res;
+routes1(1).goal  = [100; 10] * res;
 
-start_pos2 = [85; 10] * res;
-goal_pos2  = [69; 95] * res;
+routes1(2).start = [10; 38] * res;
+routes1(2).goal  = [100; 28] * res;
+
+
+% -------- Map 2 routes --------
+routes2(1).start = [85; 10] * res;
+routes2(1).goal  = [69; 95] * res;
+
+routes2(2).start = [56; 6] * res;
+routes2(2).goal  = [39; 92] * res;
+
 
 obs_size   = 20;
 obs_radius = obs_size*res/2;
@@ -41,18 +51,17 @@ actInfo.Name = 'Motor Torques';
 
 % Create environment data structure to pass to functions
 envData = struct();
-envData.scenarios(1).map       = map1;
-envData.scenarios(1).start_pos = start_pos1;
-envData.scenarios(1).goal_pos  = goal_pos1;
+envData.scenarios(1).map    = map1;
+envData.scenarios(1).routes = routes1;
 
-envData.scenarios(2).map       = map2;
-envData.scenarios(2).start_pos = start_pos2;
-envData.scenarios(2).goal_pos  = goal_pos2;
+envData.scenarios(2).map    = map2;
+envData.scenarios(2).routes = routes2;
 
 envData.res        = res;
 envData.obs_radius = obs_radius;
 envData.obs_size   = obs_size;
 envData.dt         = dt;
+
 
 
 % Create custom environment
@@ -108,7 +117,7 @@ trainOpts = rlTrainingOptions(...
     'Verbose', false, ...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
-    'StopTrainingValue', 1000, ...
+    'StopTrainingValue', 5000, ...
     'UseParallel', false);
 
 %% ========== TRAIN AGENT ==========
@@ -121,9 +130,11 @@ agent_cpu = setLearnableParameters( ...
     agent, dlupdate(@gather, getLearnableParameters(agent)));
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
+map = map2;
 test_start = [85; 10] * res;
 test_goal = [69; 95] * res;
-map = map2;
+% test_start = [85; 10] * res;
+% test_goal = [69; 95] * res;
 
 state = [test_start; 0; 0; 0; 0; 0];
 trajectory = state(1:2)';
@@ -204,7 +215,7 @@ for step = 1:max_test_steps
         drawnow;
     end
 
-    if dist_to_goal < 0.1
+    if dist_to_goal < 0.3
         fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
         break;
     end
@@ -258,8 +269,8 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
 
     isDone = false;
 
-    if dist_to_goal < 0.1
-        reward = reward + 1000;  % Big bonus for reaching goal
+    if dist_to_goal < 0.3
+        reward = reward + 5000;  % Big bonus for reaching goal
         isDone = true;
     elseif step_count >= 5000
         isDone = true;
@@ -284,33 +295,43 @@ end
 
 function [initObs, loggedSignals] = resetFcn(envData)
 
-    % ---- Pick scenario at random ----
+    % ----- Pick map -----
     scenario_id = randi(numel(envData.scenarios));
     scenario = envData.scenarios(scenario_id);
 
-    loggedSignals.map       = scenario.map;
-    if rand < 0.5
-        loggedSignals.start_pos = scenario.start_pos;
-        loggedSignals.goal_pos  = scenario.goal_pos;
-        loggedSignals.flipped   = 0;
-    else
-        loggedSignals.start_pos = scenario.goal_pos;
-        loggedSignals.goal_pos  = scenario.start_pos;
-        loggedSignals.flipped   = 1;
-    end
-    loggedSignals.scenario  = scenario_id;
+    % ----- Pick route -----
+    route_id = randi(numel(scenario.routes));
+    route = scenario.routes(route_id);
 
-    % ---- Init ----
-    init_theta = rand * 2*pi;
-    state = [loggedSignals.start_pos; init_theta; 0; 0; 0; 0];
+    % ----- Optional flip -----
+    if rand < 0.5
+        start_pos = route.start;
+        goal_pos  = route.goal;
+        flipped = false;
+    else
+        start_pos = route.goal;
+        goal_pos  = route.start;
+        flipped = true;
+    end
+
+    % ----- Store episode constants -----
+    loggedSignals.map        = scenario.map;
+    loggedSignals.start_pos  = start_pos;
+    loggedSignals.goal_pos   = goal_pos;
+    loggedSignals.scenario   = scenario_id;
+    loggedSignals.route_id   = route_id;
+    loggedSignals.flipped    = flipped;
+
+    % ----- Initialize robot -----
+    init_theta = rand * 2*pi - pi;
+    state = [start_pos; init_theta; 0; 0; 0; 0];
 
     loggedSignals.state      = state;
-    loggedSignals.trajectory = loggedSignals.start_pos';
+    loggedSignals.trajectory = start_pos';
     loggedSignals.step_count = 0;
 
-    x = state(1); 
-    y = state(2); 
-    theta = state(3);
+    % ----- Initial observation -----
+    x = state(1); y = state(2); theta = state(3);
 
     local_terrain = extractLocalTerrain( ...
         x, y, loggedSignals.map, ...
@@ -318,24 +339,25 @@ function [initObs, loggedSignals] = resetFcn(envData)
 
     terrain_vec = reshape(local_terrain, [], 1);
 
-    goal_dx = loggedSignals.goal_pos(1) - x;
-    goal_dy = loggedSignals.goal_pos(2) - y;
+    goal_dx = goal_pos(1) - x;
+    goal_dy = goal_pos(2) - y;
     dist_to_goal = hypot(goal_dx, goal_dy);
     heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
 
     initObs = [
         sin(theta); cos(theta);
         sin(heading_error); cos(heading_error);
-        dist_to_goal / norm(loggedSignals.goal_pos - loggedSignals.start_pos);
+        dist_to_goal / norm(goal_pos - start_pos);
         0; 0;
         terrain_vec
     ];
-
-    if loggedSignals.step_count == 0
-        fprintf("Episode start | Scenario %d, %d\n", loggedSignals.scenario, loggedSignals.flipped);
-    end
+    % fprintf("Episode start | Scenario %d | Route %d | Flipped %d\n", ...
+    %     loggedSignals.scenario, ...
+    %     loggedSignals.route_id, ...
+    %     loggedSignals.flipped);
 
 end
+
 
 
 
