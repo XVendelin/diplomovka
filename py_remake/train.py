@@ -82,7 +82,7 @@ class SACAgent:
             action_dim=action_dim
         )
 
-        self.batch_size = 2048
+        self.batch_size = 2056
         self.warmup_steps = 5000
         self.update_count = 0
 
@@ -227,54 +227,61 @@ def train_agent(env, agent, max_episodes=5000, max_steps_per_episode=500):
 
     print("\n=== Starting SAC Training ===")
 
-    for episode in tqdm(range(max_episodes), desc="Training"):
-        state, _ = env.reset()
-        episode_reward = 0
-        episode_length = 0
+    with tqdm(range(max_episodes), desc="Training") as pbar:
+        for episode in pbar:
 
-        for step in range(max_steps_per_episode):
-            # Select action
-            if total_steps < agent.warmup_steps:
-                action = env.action_space.sample()
-            else:
-                action = agent.select_action(state)
+            state, _ = env.reset()
+            episode_reward = 0
+            episode_length = 0
 
-            # Step environment
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            for step in range(max_steps_per_episode):
+                # Select action
+                if total_steps < agent.warmup_steps:
+                    action = env.action_space.sample()
+                else:
+                    action = agent.select_action(state)
 
-            # Store transition
-            agent.replay_buffer.push(state, action, reward, next_state, done)
+                # Step environment
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
 
-            # Update agent
-            if total_steps >= agent.warmup_steps:
-                losses = agent.update()
+                # Store transition
+                agent.replay_buffer.push(state, action, reward, next_state, done)
 
-            episode_reward += reward
-            episode_length += 1
-            total_steps += 1
+                # Update agent
+                if total_steps >= agent.warmup_steps and total_steps % 10 == 0:
+                    losses = agent.update()
 
-            state = next_state
+                episode_reward += reward
+                episode_length += 1
+                total_steps += 1
 
-            if done:
-                break
+                state = next_state
 
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(episode_length)
-        avg_rewards.append(episode_reward)
-        """
-        # Logging
-        if (episode + 1) % 10 == 0:
-            avg_reward = np.mean(avg_rewards)
-            print(f"\nEpisode {episode + 1}/{max_episodes}")
-            print(f"  Avg Reward (last 10): {avg_reward:.2f}")
-            print(f"  Episode Length: {episode_length}")
-            print(f"  Total Steps: {total_steps}")
+                if done:
+                    break
 
-        # Save checkpoint
-        if (episode + 1) % 100 == 0:
-            agent.save(f'checkpoints/agent_episode_{episode + 1}.pth')
-        """
+            episode_rewards.append(episode_reward)
+            episode_lengths.append(episode_length)
+            avg_rewards.append(episode_reward)
+
+            pbar.set_postfix({
+                "reward": f"{episode_reward:.1f}",
+                "avg_10": f"{np.mean(avg_rewards):.1f}"
+            })
+            """
+            # Logging
+            if (episode + 1) % 10 == 0:
+                avg_reward = np.mean(avg_rewards)
+                print(f"\nEpisode {episode + 1}/{max_episodes}")
+                print(f"  Avg Reward (last 10): {avg_reward:.2f}")
+                print(f"  Episode Length: {episode_length}")
+                print(f"  Total Steps: {total_steps}")
+
+            # Save checkpoint
+            if (episode + 1) % 100 == 0:
+                agent.save(f'checkpoints/agent_episode_{episode + 1}.pth')
+            """
 
     return episode_rewards, episode_lengths
 
@@ -334,7 +341,7 @@ def main():
     # Train
     episode_rewards, episode_lengths = train_agent(
         env, agent,
-        max_episodes=5000,
+        max_episodes=20000,
         max_steps_per_episode=500
     )
 
