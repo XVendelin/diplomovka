@@ -1,17 +1,9 @@
-"""
-Neural network architectures for SAC agent.
-Implements Actor and Critic networks with LSTM layers.
-"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class ActorNetwork(nn.Module):
-    """
-    Actor network for SAC with LSTM.
-    Outputs mean and std for Gaussian policy.
-    """
     def __init__(self, num_obs, hidden_size=256, lstm_size=128, num_actions=4):
         super(ActorNetwork, self).__init__()
 
@@ -30,25 +22,6 @@ class ActorNetwork(nn.Module):
         self.fc_std = nn.Linear(128, num_actions)
 
     def forward(self, obs, hidden=None):
-        """
-        Forward pass.
-
-        Parameters:
-        -----------
-        obs : torch.Tensor, shape (batch, seq_len, num_obs) or (batch, num_obs)
-            Observations
-        hidden : tuple of torch.Tensor or None
-            LSTM hidden state
-
-        Returns:
-        --------
-        mean : torch.Tensor
-            Action mean
-        std : torch.Tensor
-            Action standard deviation
-        hidden : tuple
-            Updated LSTM hidden state
-        """
         # Handle both (batch, num_obs) and (batch, seq_len, num_obs)
         if obs.dim() == 2:
             obs = obs.unsqueeze(1)  # Add sequence dimension
@@ -71,25 +44,6 @@ class ActorNetwork(nn.Module):
         return mean, std, hidden
 
     def get_action(self, obs, hidden=None, deterministic=False):
-        """
-        Sample action from policy.
-
-        Parameters:
-        -----------
-        obs : torch.Tensor
-            Observation
-        hidden : tuple or None
-            LSTM hidden state
-        deterministic : bool
-            If True, return mean action
-
-        Returns:
-        --------
-        action : torch.Tensor
-            Sampled action
-        hidden : tuple
-            Updated hidden state
-        """
         mean, std, hidden = self.forward(obs, hidden)
 
         if deterministic:
@@ -105,10 +59,6 @@ class ActorNetwork(nn.Module):
 
 
 class CriticNetwork(nn.Module):
-    """
-    Critic network for SAC with LSTM.
-    Outputs Q-value given state and action.
-    """
     def __init__(self, num_obs, num_actions=4, hidden_size=256, lstm_size=128):
         super(CriticNetwork, self).__init__()
 
@@ -127,25 +77,6 @@ class CriticNetwork(nn.Module):
         self.fc_output = nn.Linear(128, 1)
 
     def forward(self, obs, action, hidden=None):
-        """
-        Forward pass.
-
-        Parameters:
-        -----------
-        obs : torch.Tensor
-            Observations
-        action : torch.Tensor
-            Actions
-        hidden : tuple or None
-            LSTM hidden state
-
-        Returns:
-        --------
-        q_value : torch.Tensor
-            Q-value estimate
-        hidden : tuple
-            Updated hidden state
-        """
         # Handle both (batch, num_obs) and (batch, seq_len, num_obs)
         if obs.dim() == 2:
             obs = obs.unsqueeze(1)
@@ -166,37 +97,3 @@ class CriticNetwork(nn.Module):
         q_value = q_value.squeeze(1)
 
         return q_value, hidden
-
-
-def build_actor_network(num_obs):
-    """
-    Build actor network.
-
-    Parameters:
-    -----------
-    num_obs : int
-        Number of observation features
-
-    Returns:
-    --------
-    network : ActorNetwork
-        Actor network instance
-    """
-    return ActorNetwork(num_obs)
-
-
-def build_critic_network(num_obs):
-    """
-    Build critic network.
-
-    Parameters:
-    -----------
-    num_obs : int
-        Number of observation features
-
-    Returns:
-    --------
-    network : CriticNetwork
-        Critic network instance
-    """
-    return CriticNetwork(num_obs)

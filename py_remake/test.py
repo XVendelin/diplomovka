@@ -1,8 +1,3 @@
-"""
-Simple test script without real-time visualization.
-Creates a single plot at the end showing the full trajectory.
-Much faster and no plot spamming issues.
-"""
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -15,10 +10,6 @@ from robot_networks import ActorNetwork
 
 def test_agent_simple(agent_path, map_array, test_start, test_goal, res,
                       obs_size, obs_radius, max_steps=2000):
-    """
-    Test trained agent without real-time visualization.
-    Creates a single plot at the end.
-    """
     # Load agent
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -105,9 +96,6 @@ def test_agent_simple(agent_path, map_array, test_start, test_goal, res,
 
 
 def plot_trajectory(map_array, trajectory, test_start, test_goal, res, success):
-    """
-    Create a single plot showing the trajectory.
-    """
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     # Plot 1: Map with trajectory
@@ -151,7 +139,6 @@ def plot_trajectory(map_array, trajectory, test_start, test_goal, res, success):
 
 
 def main():
-    """Main testing function."""
     print("\n" + "="*60)
     print("Testing Trained Agent (Simple Version)")
     print("="*60)

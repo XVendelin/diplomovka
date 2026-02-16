@@ -1,37 +1,7 @@
-"""
-Tracked robot dynamics simulation.
-Python equivalent of MATLAB's trackedRobotDynamics function.
-"""
 import numpy as np
 
 
 def tracked_robot_dynamics(state, M, dt):
-    """
-    Dynamic model of a 4-tracked robot.
-
-    Parameters:
-    -----------
-    state : np.ndarray, shape (7,)
-        [x, y, theta, v, omega, z, zdot]
-        x, y: position [m]
-        theta: heading angle [rad]
-        v: linear velocity [m/s]
-        omega: angular velocity [rad/s]
-        z: height [m]
-        zdot: vertical velocity [m/s]
-
-    M : np.ndarray, shape (4,)
-        Motor torques [N*m]: [M_FL, M_FR, M_RL, M_RR]
-        FL: Front Left, FR: Front Right, RL: Rear Left, RR: Rear Right
-
-    dt : float
-        Time step [s]
-
-    Returns:
-    --------
-    state_new : np.ndarray, shape (7,)
-        Updated state after dt seconds
-    """
     # === ROBOT PARAMETERS (default values) ===
     m = 40.0  # [kg] robot mass
     Jz = 3.0  # [kg*m^2] moment of inertia around vertical axis

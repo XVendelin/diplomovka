@@ -1,7 +1,3 @@
-"""
-Custom RL Environment for robot navigation.
-Implements Gym-like interface for training with SAC.
-"""
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -10,24 +6,8 @@ from robot_utils import extract_local_terrain, calculate_reward, wrap_to_pi
 
 
 class RobotNavigationEnv(gym.Env):
-    """
-    Robot navigation environment for reinforcement learning.
-    """
 
     def __init__(self, env_data):
-        """
-        Initialize environment.
-
-        Parameters:
-        -----------
-        env_data : dict
-            Contains:
-            - scenarios: list of dicts with 'map' and 'routes'
-            - res: map resolution
-            - obs_radius: observation radius
-            - obs_size: observation grid size
-            - dt: time step
-        """
         super(RobotNavigationEnv, self).__init__()
 
         self.env_data = env_data
@@ -65,16 +45,6 @@ class RobotNavigationEnv(gym.Env):
         self.max_steps = 500
 
     def reset(self, seed=None, options=None):
-        """
-        Reset environment to initial state.
-
-        Returns:
-        --------
-        observation : np.ndarray
-            Initial observation
-        info : dict
-            Additional information
-        """
         super().reset(seed=seed)
 
         # Pick random scenario
@@ -121,27 +91,6 @@ class RobotNavigationEnv(gym.Env):
         return observation, info
 
     def step(self, action):
-        """
-        Execute one step in the environment.
-
-        Parameters:
-        -----------
-        action : np.ndarray
-            Motor torques [M_FL, M_FR, M_RL, M_RR]
-
-        Returns:
-        --------
-        observation : np.ndarray
-            Next observation
-        reward : float
-            Reward signal
-        terminated : bool
-            Whether episode is done
-        truncated : bool
-            Whether episode was truncated
-        info : dict
-            Additional information
-        """
         # Clip action to valid range
         action = np.clip(action, -10, 10)
 
@@ -211,14 +160,6 @@ class RobotNavigationEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def _get_observation(self):
-        """
-        Get current observation.
-
-        Returns:
-        --------
-        obs : np.ndarray
-            Observation vector
-        """
         x = self.state[0]
         y = self.state[1]
         theta = self.state[2]
@@ -255,15 +196,3 @@ class RobotNavigationEnv(gym.Env):
         ]).astype(np.float32)
 
         return obs
-
-    def render(self, mode='human'):
-        """
-        Render the environment (not implemented).
-        """
-        pass
-
-    def close(self):
-        """
-        Clean up resources.
-        """
-        pass

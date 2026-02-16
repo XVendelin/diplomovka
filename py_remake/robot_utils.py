@@ -1,33 +1,9 @@
-"""
-Utility functions for robot navigation.
-"""
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon as MplPolygon
 
 
 def extract_local_terrain(x, y, map_array, res, radius, grid_size):
-    """
-    Extract local terrain around robot position.
-
-    Parameters:
-    -----------
-    x, y : float
-        Robot position in world coordinates [m]
-    map_array : np.ndarray
-        Global map
-    res : float
-        Map resolution [m/cell]
-    radius : float
-        Radius of local observation [m]
-    grid_size : int
-        Size of local grid (grid_size x grid_size)
-
-    Returns:
-    --------
-    local_map : np.ndarray, shape (grid_size, grid_size)
-        Local terrain centered on robot
-    """
     half = grid_size // 2
     local_map = np.zeros((grid_size, grid_size))
 
@@ -51,24 +27,6 @@ def extract_local_terrain(x, y, map_array, res, radius, grid_size):
 
 
 def draw_tracked_robot(ax, x, y, theta, L, y_offset, res):
-    """
-    Draw a tracked robot on matplotlib axes.
-
-    Parameters:
-    -----------
-    ax : matplotlib.axes.Axes
-        Axes to draw on
-    x, y : float
-        Robot position [m]
-    theta : float
-        Robot heading [rad]
-    L : float
-        Robot half-length [m]
-    y_offset : float
-        Robot half-width [m]
-    res : float
-        Map resolution for coordinate conversion
-    """
     # Robot corners in local frame
     corners_robot = np.array([
         [-L, -y_offset],
@@ -110,46 +68,10 @@ def draw_tracked_robot(ax, x, y, theta, L, y_offset, res):
 
 
 def wrap_to_pi(angle):
-    """
-    Wrap angle to [-pi, pi] range.
-
-    Parameters:
-    -----------
-    angle : float or np.ndarray
-        Angle(s) in radians
-
-    Returns:
-    --------
-    wrapped : float or np.ndarray
-        Angle(s) wrapped to [-pi, pi]
-    """
     return ((angle + np.pi) % (2 * np.pi)) - np.pi
 
 
 def calculate_reward(state, goal_pos, terrain, dist_to_goal, heading_error, res=0.1):
-    """
-    Calculate reward for reinforcement learning.
-
-    Parameters:
-    -----------
-    state : np.ndarray
-        Robot state [x, y, theta, v, omega, z, zdot]
-    goal_pos : np.ndarray
-        Goal position [x, y]
-    terrain : np.ndarray
-        Local terrain map
-    dist_to_goal : float
-        Distance to goal [m]
-    heading_error : float
-        Heading error [rad]
-    res : float
-        Map resolution
-
-    Returns:
-    --------
-    reward : float
-        Scalar reward value
-    """
     sizex = int(np.ceil(0.5 / res / 2))
     sizey = int(np.ceil(0.5 / res / 2))
     center = terrain.shape[0] // 2
@@ -165,7 +87,7 @@ def calculate_reward(state, goal_pos, terrain, dist_to_goal, heading_error, res=
     reward = -0.2 * dist_to_goal
 
     # Collision penalty
-    reward -= 2 * hit_count
+    reward -= 0 * hit_count
 
     # Heading alignment
     reward -= 0.1 * abs(heading_error)

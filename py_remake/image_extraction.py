@@ -1,62 +1,12 @@
-"""
-Image extraction utility - extracts polygon regions from images.
-Python equivalent of MATLAB's druhy function.
-"""
 import numpy as np
 from PIL import Image
 from matplotlib.path import Path
 
 
-# ============================================================================
-# ORIENTATION FIX CONFIGURATION
-# ============================================================================
-# Change this if maps don't match MATLAB orientation:
-#
-# Options:
-#   'none'              - No transformation (current default)
-#   'transpose'         - Transpose the result (swap rows/cols)
-#   'flip_vertical'     - Flip vertically (upside down)
-#   'flip_horizontal'   - Flip horizontally (left-right)
-#   'rotate_90'         - Rotate 90 degrees counterclockwise
-#   'rotate_180'        - Rotate 180 degrees
-#   'rotate_270'        - Rotate 270 degrees (90 clockwise)
-#
-# To find the correct setting:
-#   1. Run: python diagnose_image_orientation.py
-#   2. Compare with MATLAB output
-#   3. Set ORIENTATION_FIX to the matching option
-# ============================================================================
-
 ORIENTATION_FIX = 'transpose'  # ← CHANGE THIS IF NEEDED
-
-# ============================================================================
 
 
 def druhy(filename, coords):
-    """
-    Extract a polygon region from an image.
-
-    Parameters:
-    -----------
-    filename : str
-        Path to the image file
-    coords : np.ndarray
-        Polygon coordinates as [N x 2] array of [row, col] pairs
-
-    Returns:
-    --------
-    result : np.ndarray
-        Matrix with points outside polygon set to 1, inside points
-        contain original image values
-
-    Example:
-    --------
-    coords = np.array([[250, 370],  # [row, col]
-                       [220, 550],
-                       [450, 550],
-                       [450, 350]])
-    result = druhy('image.jpg', coords)
-    """
     # Read image
     img = Image.open(filename)
 
@@ -108,21 +58,6 @@ def druhy(filename, coords):
 
 
 def _apply_orientation_fix(array, fix_type):
-    """
-    Apply orientation transformation to match MATLAB output.
-
-    Parameters:
-    -----------
-    array : np.ndarray
-        Input array
-    fix_type : str
-        Type of fix to apply
-
-    Returns:
-    --------
-    np.ndarray
-        Transformed array
-    """
     if fix_type == 'none':
         return array
     elif fix_type == 'transpose':
@@ -144,22 +79,6 @@ def _apply_orientation_fix(array, fix_type):
 
 
 def test_orientations(filename, coords):
-    """
-    Test all orientation options and display them.
-    Useful for finding which orientation matches MATLAB.
-
-    Parameters:
-    -----------
-    filename : str
-        Path to image file
-    coords : np.ndarray
-        Polygon coordinates
-
-    Returns:
-    --------
-    dict
-        Dictionary mapping orientation names to extracted maps
-    """
     import matplotlib.pyplot as plt
 
     orientations = [

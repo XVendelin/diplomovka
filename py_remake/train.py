@@ -1,7 +1,3 @@
-"""
-SAC Robot Navigation Training
-Main script for training a robot navigation agent using Soft Actor-Critic.
-"""
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,19 +14,15 @@ from robot_networks import ActorNetwork, CriticNetwork
 
 
 class ReplayBuffer:
-    """Experience replay buffer for SAC."""
-
     def __init__(self, capacity, obs_dim, action_dim, sequence_length=10):
         self.capacity = capacity
         self.sequence_length = sequence_length
         self.buffer = deque(maxlen=capacity)
 
     def push(self, state, action, reward, next_state, done):
-        """Add experience to buffer."""
         self.buffer.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
-        """Sample random batch of experiences."""
         batch = random.sample(self.buffer, batch_size)
         states, actions, rewards, next_states, dones = zip(*batch)
 
@@ -47,8 +39,6 @@ class ReplayBuffer:
 
 
 class SACAgent:
-    """Soft Actor-Critic agent."""
-
     def __init__(self, obs_dim, action_dim, device='cpu'):
         self.obs_dim = obs_dim
         self.action_dim = action_dim
@@ -87,7 +77,6 @@ class SACAgent:
         self.update_count = 0
 
     def select_action(self, state, evaluate=False):
-        """Select action from policy."""
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
@@ -96,7 +85,6 @@ class SACAgent:
         return action.cpu().numpy().squeeze()
 
     def update(self):
-        """Update networks using SAC algorithm."""
         if len(self.replay_buffer) < self.batch_size:
             return {}
 
@@ -164,7 +152,6 @@ class SACAgent:
         }
 
     def _get_action_and_log_prob(self, states):
-        """Get action and log probability from policy."""
         mean, std, hidden = self.actor(states)
 
         dist = torch.distributions.Normal(mean, std)
@@ -177,14 +164,12 @@ class SACAgent:
         return actions, log_probs, hidden
 
     def _soft_update(self, target, source):
-        """Soft update of target network."""
         for target_param, param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(
                 target_param.data * (1.0 - self.tau) + param.data * self.tau
             )
 
     def save(self, filepath):
-        """Save agent."""
         torch.save({
             'actor': self.actor.state_dict(),
             'critic1': self.critic1.state_dict(),
@@ -192,7 +177,6 @@ class SACAgent:
         }, filepath)
 
     def load(self, filepath):
-        """Load agent."""
         checkpoint = torch.load(filepath, map_location=self.device)
         self.actor.load_state_dict(checkpoint['actor'])
         self.critic1.load_state_dict(checkpoint['critic1'])
@@ -200,25 +184,6 @@ class SACAgent:
 
 
 def train_agent(env, agent, max_episodes=5000, max_steps_per_episode=500):
-    """
-    Train SAC agent.
-
-    Parameters:
-    -----------
-    env : RobotNavigationEnv
-        Environment
-    agent : SACAgent
-        SAC agent
-    max_episodes : int
-        Maximum number of episodes
-    max_steps_per_episode : int
-        Maximum steps per episode
-
-    Returns:
-    --------
-    episode_rewards : list
-        Reward per episode
-    """
     episode_rewards = []
     episode_lengths = []
     avg_rewards = deque(maxlen=10)
@@ -287,7 +252,6 @@ def train_agent(env, agent, max_episodes=5000, max_steps_per_episode=500):
 
 
 def main():
-    """Main training function."""
     # Create checkpoint directory
     os.makedirs('checkpoints', exist_ok=True)
 
@@ -295,10 +259,10 @@ def main():
     print("Loading maps...")
     coords1 = np.array([[280, 400], [280, 520], [400, 520], [400, 400]])
     map1 = druhy('image.jpg', coords1)
-
+    '''
     coords2 = np.array([[475, 1100], [475, 1200], [575, 1200], [575, 1100]])
     map2 = druhy('image.jpg', coords2)
-
+    '''
     res = 0.1  # map resolution [m/cell]
     obs_size = 20
     obs_radius = obs_size * res / 2
@@ -318,8 +282,8 @@ def main():
     # Create environment
     env_data = {
         'scenarios': [
-            {'map': map1, 'routes': routes1},
-            {'map': map2, 'routes': routes2}
+            {'map': map1, 'routes': routes1}
+            #{'map': map2, 'routes': routes2}
         ],
         'res': res,
         'obs_radius': obs_radius,
