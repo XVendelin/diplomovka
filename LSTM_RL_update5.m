@@ -118,12 +118,42 @@ trainOpts = rlTrainingOptions(...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
     'StopTrainingValue', 5000, ...
-    'UseParallel', false);
+    'UseParallel', false, ...
+    'SaveAgentCriteria', "EpisodeReward", ...
+    "SaveAgentValue", 4000, ...
+    "SaveAgentDirectory", 'savedAgents');
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting SAC Training ===\n');
 agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters(agent)));
 trainingStats = train(agent, env, trainOpts);
+
+%% ========== GET BEST AGENT =======
+
+files = dir(fullfile('savedAgents', 'Agent*.mat'));
+
+bestReward = -Inf;
+bestFile = '';
+
+for k = 1:numel(files)
+    % Extract episode number from filename
+    ep = regexp(files(k).name, '\d+', 'match');
+    ep = str2double(ep{1});
+    
+    % Look up that episode's reward from trainingStats
+    if ep <= numel(trainingStats.EpisodeReward)
+        r = trainingStats.EpisodeReward(ep);
+        if r > bestReward
+            bestReward = r;
+            bestFile = fullfile(files(k).folder, files(k).name);
+        end
+    end
+end
+
+fprintf('Best agent: %s | Reward: %.1f\n', bestFile, bestReward);
+data = load(bestFile);
+agent = data.saved_agent;  % or data.Agent depending on MATLAB version
+save('bestAgent.mat', 'agent');
 
 %% ========== TEST TRAINED AGENT ==========
 agent_cpu = setLearnableParameters( ...
