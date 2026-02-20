@@ -1,4 +1,13 @@
+.gitignore
+
 *.png
 *.mat
 
 
+
+py_remake/*.jpg
+py_remake/*.png
+py_remake/*.pkl
+py_remake/.idea/
+py_remake/.venv/
+py_remake/__pycache__/
