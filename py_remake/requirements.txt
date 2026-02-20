@@ -1,0 +1,25 @@
+# SAC Robot Navigation - Python Requirements
+# Install with: pip install -r requirements_correct.txt
+
+# Core numerical computing
+numpy>=1.21.0
+
+# Deep Learning - PyTorch (optim is included in torch)
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+
+# Reinforcement Learning Environment
+gymnasium>=0.29.0
+
+# Plotting and Visualization (pyplot is part of matplotlib)
+matplotlib>=3.5.0
+
+# Image processing
+Pillow>=9.0.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Scientific computing
+scipy>=1.9.0
