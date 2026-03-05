@@ -70,8 +70,8 @@ agentOpts = rlSACAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 1024*2, ...
-    'NumWarmStartSteps', 5000, ...
+    'MiniBatchSize', 1024*8, ...
+    'NumWarmStartSteps', 5000*2, ...
     'SequenceLength', 10, ...      
     'TargetSmoothFactor', 0.005, ...
     'TargetUpdateFrequency', 1);
@@ -342,16 +342,16 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     reward = -0.2 * dist_to_goal;
 
     % zasah do vinica
-    reward = reward - 2 * hit_count;
+    % reward = reward - 2 * hit_count;
     
     % smerovanie
     reward = reward - 0.1 * abs(heading_error);
 
     % rychlost
-    terrain_difficulty = mean(hitbox(:),"all");  
-    safe_speed = 1 * (1 - terrain_difficulty);
-    speed_penalty = 2 * (v - safe_speed)^2;
-    reward = reward - 0.5 * speed_penalty;
+    % terrain_difficulty = mean(hitbox(:),"all");  
+    % safe_speed = 1 * (1 - terrain_difficulty);
+    % speed_penalty = 2 * (v - safe_speed)^2;
+    % reward = reward - 0.5 * speed_penalty;
 
     % stabilita zmeny vysky
     % reward = reward - 0.2 * abs(z - 0.22);
@@ -366,57 +366,84 @@ end
 function net = buildActorNetwork(numObs)
     commonPath = [
         sequenceInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(256, 'Name', 'fc_pre_lstm')
-        reluLayer('Name', 'relu_pre')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm') 
-        fullyConnectedLayer(128, 'Name', 'fc_common3')
-        reluLayer('Name', 'relu_common3')
+        fullyConnectedLayer(128, 'Name', 'fc1')
+        reluLayer('Name', 'relu1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm1')
+        fullyConnectedLayer(64, 'Name', 'fc2')
+        reluLayer('Name', 'relu2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm2')
+        fullyConnectedLayer(64, 'Name', 'fc3')
+        reluLayer('Name', 'relu3')
+        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm3')
+        fullyConnectedLayer(32, 'Name', 'fc4')
+        reluLayer('Name', 'relu4')
     ];
-    
+
     meanPath = [
-        fullyConnectedLayer(4, 'Name', 'mean_fc')
+        fullyConnectedLayer(16, 'Name', 'mean_fc1')
+        reluLayer('Name', 'mean_relu')
+        fullyConnectedLayer(4, 'Name', 'mean_fc2')
         tanhLayer('Name', 'mean_tanh')
         scalingLayer('Scale', 10, 'Name', 'mean_scale')
     ];
-    
+
     stdPath = [
-        fullyConnectedLayer(4, 'Name', 'std_fc')
+        fullyConnectedLayer(16, 'Name', 'std_fc1')
+        reluLayer('Name', 'std_relu')
+        fullyConnectedLayer(4, 'Name', 'std_fc2')
         softplusLayer('Name', 'std_softplus')
     ];
-    
+
     net = layerGraph(commonPath);
     net = addLayers(net, meanPath);
     net = addLayers(net, stdPath);
-    net = connectLayers(net, 'relu_common3', 'mean_fc');
-    net = connectLayers(net, 'relu_common3', 'std_fc');
+    net = connectLayers(net, 'relu4', 'mean_fc1');
+    net = connectLayers(net, 'relu4', 'std_fc1');
 end
 
 function net = buildCriticNetwork(numObs)
     statePath = [
         sequenceInputLayer(numObs, 'Name', 'state')
-        fullyConnectedLayer(256, 'Name', 'fc1')
-        reluLayer('Name', 'relu1')
+        fullyConnectedLayer(128, 'Name', 'fc_s1')
+        reluLayer('Name', 'relu_s1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_s1')
+        fullyConnectedLayer(64, 'Name', 'fc_s2')
+        reluLayer('Name', 'relu_s2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_s2')
+        fullyConnectedLayer(64, 'Name', 'fc_s3')
+        reluLayer('Name', 'relu_s3')
     ];
-    
+
     actionPath = [
         sequenceInputLayer(4, 'Name', 'action')
-        fullyConnectedLayer(256, 'Name', 'fc2')
-        reluLayer('Name', 'relu_act')
+        fullyConnectedLayer(128, 'Name', 'fc_a1')
+        reluLayer('Name', 'relu_a1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_a1')
+        fullyConnectedLayer(64, 'Name', 'fc_a2')
+        reluLayer('Name', 'relu_a2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_a2')
+        fullyConnectedLayer(64, 'Name', 'fc_a3')
+        reluLayer('Name', 'relu_a3')
     ];
-    
+
     commonPath = [
         additionLayer(2, 'Name', 'add')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'critic_lstm')
-        fullyConnectedLayer(128, 'Name', 'fc3')
-        reluLayer('Name', 'relu3')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_c1')
+        fullyConnectedLayer(64, 'Name', 'fc_c1')
+        reluLayer('Name', 'relu_c1')
+        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm_c2')
+        fullyConnectedLayer(32, 'Name', 'fc_c2')
+        reluLayer('Name', 'relu_c2')
+        fullyConnectedLayer(16, 'Name', 'fc_c3')
+        reluLayer('Name', 'relu_c3')
         fullyConnectedLayer(1, 'Name', 'output')
     ];
-    
+
     net = layerGraph(statePath);
     net = addLayers(net, actionPath);
     net = addLayers(net, commonPath);
-    net = connectLayers(net, 'relu1', 'add/in1');
-    net = connectLayers(net, 'relu_act', 'add/in2');
+    net = connectLayers(net, 'relu_s3', 'add/in1');
+    net = connectLayers(net, 'relu_a3', 'add/in2');
 end
 
 
