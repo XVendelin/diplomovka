@@ -28,6 +28,8 @@ routes2(1).goal  = [69; 95] * res;
 routes2(2).start = [56; 6] * res;
 routes2(2).goal  = [39; 92] * res;
 
+routes2(3).start = [64; 10] * res;
+routes2(3).goal  = [39; 92] * res;
 
 obs_size   = 20;
 obs_radius = obs_size*res/2;
@@ -112,7 +114,7 @@ agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
 %% ========== TRAINING OPTIONS ==========
 trainOpts = rlTrainingOptions(...
     'MaxEpisodes', 5000, ...
-    'MaxStepsPerEpisode', 500, ...
+    'MaxStepsPerEpisode', 200, ...
     'ScoreAveragingWindowLength', 10, ...
     'Verbose', false, ...
     'Plots', 'training-progress', ...
@@ -120,7 +122,7 @@ trainOpts = rlTrainingOptions(...
     'StopTrainingValue', 5000, ...
     'UseParallel', false, ...
     'SaveAgentCriteria', "EpisodeReward", ...
-    "SaveAgentValue", 4000, ...
+    "SaveAgentValue", 3000, ...
     "SaveAgentDirectory", 'savedAgents');
 
 %% ========== TRAIN AGENT ==========
@@ -132,26 +134,24 @@ trainingStats = train(agent, env, trainOpts);
 
 files = dir(fullfile('savedAgents', 'Agent*.mat'));
 
-bestReward = -Inf;
-bestFile = '';
-
-for k = 1:numel(files)
-    % Extract episode number from filename
-    ep = regexp(files(k).name, '\d+', 'match');
-    ep = str2double(ep{1});
+if ~isempty(files)
+    % Sort by date (descending) so the newest is at index 1
+    [~, idx] = sort([files.datenum], 'descend');
+    newestFile = fullfile(files(idx(1)).folder, files(idx(1)).name);
     
-    % Look up that episode's reward from trainingStats
-    if ep <= numel(trainingStats.EpisodeReward)
-        r = trainingStats.EpisodeReward(ep);
-        if r > bestReward
-            bestReward = r;
-            bestFile = fullfile(files(k).folder, files(k).name);
-        end
-    end
+    % Load the data
+    data = load(newestFile);
+    rewards = data.savedAgentResult.EpisodeReward;
+    [maxVal, maxIdx] = max(rewards(11:end));
+    maxIdx=maxIdx+10;
+else
+    error('No agent files found in the directory.');
 end
 
-fprintf('Best agent: %s | Reward: %.1f\n', bestFile, bestReward);
-data = load(bestFile);
+fprintf('Best agent: %i | Reward: %.1f\n', maxIdx, maxVal);
+fileName = sprintf('Agent%d.mat', maxIdx);
+filePath = fullfile('savedAgents', fileName);
+data=load(filePath);
 agent = data.saved_agent;  % or data.Agent depending on MATLAB version
 save('bestAgent.mat', 'agent');
 
@@ -160,18 +160,25 @@ agent_cpu = setLearnableParameters( ...
     agent, dlupdate(@gather, getLearnableParameters(agent)));
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
-map = map2;
-test_start = [85; 10] * res;
-test_goal = [69; 95] * res;
+map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
+test_start = [86; 10] * res;
+test_goal = [85; 90] * res;
+
+test_goals = [75 78 60 78 95; 
+            90 10 95 10 95];
+
 % test_start = [85; 10] * res;
 % test_goal = [69; 95] * res;
 
-state = [test_start; 0; 0; 0; 0; 0];
+state = [test_start; pi/2; 0; 0; 0; 0];
+% state(1:2)  = [test_start];
+
 trajectory = state(1:2)';
 
 max_test_steps = 2000;
 
 figure('Position', [100, 100, 1500, 600]);
+a=0;
 
 for step = 1:max_test_steps
     x = state(1);
@@ -246,14 +253,18 @@ for step = 1:max_test_steps
     end
 
     if dist_to_goal < 0.3
-        fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
-        break;
+        if a >=3
+            fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
+            break;
+        end
+        a=a+1;
+        test_goal = test_goals(:,a) * res;
     end
 
-    if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
-        fprintf('Stuck at step %d (%.2fm from goal)\n', step, dist_to_goal);
-        break;
-    end
+    % if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
+    %     fprintf('Stuck at step %d (%.2fm from goal)\n', step, dist_to_goal);
+    %     break;
+    % end
 end
 
 
@@ -309,10 +320,18 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
         isDone = true;
     end
 
+    % --- Check Out of Bounds ---
+    [mapRows, mapCols] = size(loggedSignals.map);
+    maxX = mapCols * envData.res;
+    maxY = mapRows * envData.res;
+
+    if x < 0 || x > maxX || y < 0 || y > maxY
+        isDone = true;
+    end
+
     % --- Check if stuck ---
     if size(trajectory,1) > 100
-        if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.3
-            reward = reward - 50;
+        if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.2
             isDone = true;
         end
     end
@@ -404,7 +423,8 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
     hit_count = sum(hitbox(:)==1);
 
-    v = state(4);  
+    v = state(4);
+    theta = state(3);
     % z = state(6);
     % zdot = state(7);
     
@@ -412,16 +432,24 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     reward = -0.2 * dist_to_goal;
 
     % zasah do vinica
-    reward = reward - 2 * hit_count;
+    reward = reward - 10 * hit_count;
     
     % smerovanie
-    reward = reward - 0.1 * abs(heading_error);
+    reward = reward - 5 * abs(heading_error);
 
     % rychlost
     terrain_difficulty = mean(hitbox(:),"all");  
     safe_speed = 1 * (1 - terrain_difficulty);
-    speed_penalty = 2 * (v - safe_speed)^2;
-    reward = reward - 0.5 * speed_penalty;
+    speed_penalty = 2 * (v - safe_speed)^4;
+    reward = reward - speed_penalty - theta^2;
+
+    % spomaliť blízko k cieľu
+    if dist_to_goal < 2.0
+        max_allowed_speed = 0.5;
+        if v > max_allowed_speed
+            reward = reward - (v - max_allowed_speed)^2;
+        end
+    end
 
     % stabilita zmeny vysky
     % reward = reward - 0.2 * abs(z - 0.22);
@@ -436,57 +464,84 @@ end
 function net = buildActorNetwork(numObs)
     commonPath = [
         sequenceInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(256, 'Name', 'fc_pre_lstm')
-        reluLayer('Name', 'relu_pre')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm') 
-        fullyConnectedLayer(128, 'Name', 'fc_common3')
-        reluLayer('Name', 'relu_common3')
+        fullyConnectedLayer(128, 'Name', 'fc1')
+        reluLayer('Name', 'relu1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm1')
+        fullyConnectedLayer(64, 'Name', 'fc2')
+        reluLayer('Name', 'relu2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm2')
+        fullyConnectedLayer(64, 'Name', 'fc3')
+        reluLayer('Name', 'relu3')
+        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm3')
+        fullyConnectedLayer(32, 'Name', 'fc4')
+        reluLayer('Name', 'relu4')
     ];
-    
+
     meanPath = [
-        fullyConnectedLayer(4, 'Name', 'mean_fc')
+        fullyConnectedLayer(16, 'Name', 'mean_fc1')
+        reluLayer('Name', 'mean_relu')
+        fullyConnectedLayer(4, 'Name', 'mean_fc2')
         tanhLayer('Name', 'mean_tanh')
         scalingLayer('Scale', 10, 'Name', 'mean_scale')
     ];
-    
+
     stdPath = [
-        fullyConnectedLayer(4, 'Name', 'std_fc')
+        fullyConnectedLayer(16, 'Name', 'std_fc1')
+        reluLayer('Name', 'std_relu')
+        fullyConnectedLayer(4, 'Name', 'std_fc2')
         softplusLayer('Name', 'std_softplus')
     ];
-    
+
     net = layerGraph(commonPath);
     net = addLayers(net, meanPath);
     net = addLayers(net, stdPath);
-    net = connectLayers(net, 'relu_common3', 'mean_fc');
-    net = connectLayers(net, 'relu_common3', 'std_fc');
+    net = connectLayers(net, 'relu4', 'mean_fc1');
+    net = connectLayers(net, 'relu4', 'std_fc1');
 end
 
 function net = buildCriticNetwork(numObs)
     statePath = [
         sequenceInputLayer(numObs, 'Name', 'state')
-        fullyConnectedLayer(256, 'Name', 'fc1')
-        reluLayer('Name', 'relu1')
+        fullyConnectedLayer(128, 'Name', 'fc_s1')
+        reluLayer('Name', 'relu_s1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_s1')
+        fullyConnectedLayer(64, 'Name', 'fc_s2')
+        reluLayer('Name', 'relu_s2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_s2')
+        fullyConnectedLayer(64, 'Name', 'fc_s3')
+        reluLayer('Name', 'relu_s3')
     ];
-    
+
     actionPath = [
         sequenceInputLayer(4, 'Name', 'action')
-        fullyConnectedLayer(256, 'Name', 'fc2')
-        reluLayer('Name', 'relu_act')
+        fullyConnectedLayer(128, 'Name', 'fc_a1')
+        reluLayer('Name', 'relu_a1')
+        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_a1')
+        fullyConnectedLayer(64, 'Name', 'fc_a2')
+        reluLayer('Name', 'relu_a2')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_a2')
+        fullyConnectedLayer(64, 'Name', 'fc_a3')
+        reluLayer('Name', 'relu_a3')
     ];
-    
+
     commonPath = [
         additionLayer(2, 'Name', 'add')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'critic_lstm')
-        fullyConnectedLayer(128, 'Name', 'fc3')
-        reluLayer('Name', 'relu3')
+        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_c1')
+        fullyConnectedLayer(64, 'Name', 'fc_c1')
+        reluLayer('Name', 'relu_c1')
+        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm_c2')
+        fullyConnectedLayer(32, 'Name', 'fc_c2')
+        reluLayer('Name', 'relu_c2')
+        fullyConnectedLayer(16, 'Name', 'fc_c3')
+        reluLayer('Name', 'relu_c3')
         fullyConnectedLayer(1, 'Name', 'output')
     ];
-    
+
     net = layerGraph(statePath);
     net = addLayers(net, actionPath);
     net = addLayers(net, commonPath);
-    net = connectLayers(net, 'relu1', 'add/in1');
-    net = connectLayers(net, 'relu_act', 'add/in2');
+    net = connectLayers(net, 'relu_s3', 'add/in1');
+    net = connectLayers(net, 'relu_a3', 'add/in2');
 end
 
 
