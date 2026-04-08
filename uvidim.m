@@ -1,17 +1,34 @@
 %% SAC Robot Navigation Training - A* Path Following
-% Uses Soft Actor-Critic (SAC) reinforcement learning to train robot navigation
 
 clear; clc; close all;
-addpath("kinematika_MR");
 
 %% ========== LOAD MAP ==========
-coords = [280 400; 280 520; 400 520; 400 400];
-map = druhy('image.jpg', coords);
+addpath("kinematika_MR");
+coords1 = [280 400; 280 520; 400 520; 400 400];
+map1 = druhy('image.jpg', coords1);
+coords2 = [475 1100; 475 1200; 575 1200; 575 1100];
+map2 = druhy('image.jpg', coords2);
 res = 0.1;  % map resolution [m/cell]
+% imagesc(map); colormap gray
 
 %% ========== CONFIGURATION ==========
-start_pos = [10; 18] * res;
-goal_pos  = [100; 10] * res;
+% -------- Map 1 routes --------
+routes1(1).start = [10; 18] * res;
+routes1(1).goal  = [100; 10] * res;
+
+routes1(2).start = [10; 38] * res;
+routes1(2).goal  = [100; 28] * res;
+
+
+% -------- Map 2 routes --------
+routes2(1).start = [85; 10] * res;
+routes2(1).goal  = [69; 95] * res;
+
+routes2(2).start = [56; 6] * res;
+routes2(2).goal  = [39; 92] * res;
+
+routes2(3).start = [64; 10] * res;
+routes2(3).goal  = [39; 92] * res;
 
 obs_size   = 20;
 obs_radius = obs_size*res/2;
@@ -30,18 +47,23 @@ obsInfo.Name = 'Robot State';
 obsInfo.Description = 'Robot pose, velocities, and local terrain';
 
 % Define action info (4 motor torques)
-actInfo = rlNumericSpec([4 1], 'LowerLimit', -10, 'UpperLimit', 10);
+actInfo = rlNumericSpec([2 1], 'LowerLimit', -10, 'UpperLimit', 10);
 actInfo.Name = 'Motor Torques';
 
 % Create environment data structure to pass to functions
 envData = struct();
-envData.map = map;
-envData.res = res;
-envData.start_pos = start_pos;
-envData.goal_pos = goal_pos;
+envData.scenarios(1).map    = map1;
+envData.scenarios(1).routes = routes1;
+
+envData.scenarios(2).map    = map2;
+envData.scenarios(2).routes = routes2;
+
+envData.res        = res;
 envData.obs_radius = obs_radius;
-envData.obs_size = obs_size;
-envData.dt = dt;
+envData.obs_size   = obs_size;
+envData.dt         = dt;
+
+
 
 % Create custom environment
 env = rlFunctionEnv(obsInfo, actInfo, ...
@@ -70,9 +92,8 @@ agentOpts = rlSACAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 1024*8, ...
-    'NumWarmStartSteps', 5000*2, ...
-    'SequenceLength', 10, ...      
+    'MiniBatchSize', 1024*2, ...
+    'NumWarmStartSteps', 5000, ...
     'TargetSmoothFactor', 0.005, ...
     'TargetUpdateFrequency', 1);
 
@@ -90,34 +111,81 @@ agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
 
 %% ========== TRAINING OPTIONS ==========
 trainOpts = rlTrainingOptions(...
-    'MaxEpisodes', 5000, ...
+    'MaxEpisodes', 50000, ...
     'MaxStepsPerEpisode', 200, ...
     'ScoreAveragingWindowLength', 10, ...
     'Verbose', false, ...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
-    'StopTrainingValue', 1000, ...
-    'UseParallel', false);
+    'StopTrainingValue', 5000, ...
+    'UseParallel', false, ...
+    'SaveAgentCriteria', "EpisodeReward", ...
+    "SaveAgentValue", 3000, ...
+    "SaveAgentDirectory", 'savedAgents1pas');
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting SAC Training ===\n');
 agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters(agent)));
 trainingStats = train(agent, env, trainOpts);
 
+%% ========== GET BEST AGENT =======
+foldername = 'savedAgents1pas';
+offset = 8000;
+
+files = dir(fullfile(foldername, 'Agent*.mat'));
+
+if ~isempty(files)
+    [~, idx] = sort([files.datenum], 'descend');
+    newestFile = fullfile(files(idx(1)).folder, files(idx(1)).name);
+    
+    % Load the data
+    data = load(newestFile);
+    rewards = data.savedAgentResult.EpisodeReward;
+    [maxVal, maxIdx] = max(rewards(offset+1:end));
+    maxIdx=maxIdx+offset;
+else
+    error('No agent files found in the directory.');
+end
+
+fprintf('Best agent: %i | Reward: %.1f\n', maxIdx, maxVal);
+fileName = sprintf('Agent%d.mat', maxIdx);
+filePath = fullfile(foldername, fileName);
+data=load(filePath);
+agent = data.saved_agent;
+save('bestAgent.mat', 'agent');
+
 %% ========== TEST TRAINED AGENT ==========
-agent_cpu = setLearnableParameters( ...
-    agent, dlupdate(@gather, getLearnableParameters(agent)));
+close all;
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
-test_start = [10; 18] * res;
-test_goal = [100; 10] * res;
+greedyPolicy = getGreedyPolicy(agent);
+reset(greedyPolicy);
+% map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
+map = imread("extraction2.png");
+if size(map,3) == 3
+    map = rgb2gray(map);
+end
 
-state = [test_start; 0; 0; 0; 0; 0];
+map=im2double(map);
+
+test_start = [88; 10] * res;
+test_goal = [85; 90] * res;
+
+test_goals = [75 76 64 60; 
+            90 22 26 95];
+
+% test_start = [85; 10] * res;
+% test_goal = [69; 95] * res;
+
+state = [test_start; pi/2; 0; 0; 0; 0];
+% state(1:2)  = [test_start];
+
 trajectory = state(1:2)';
 
 max_test_steps = 2000;
 
 figure('Position', [100, 100, 1500, 600]);
+a=0;
 
 for step = 1:max_test_steps
     x = state(1);
@@ -150,20 +218,21 @@ for step = 1:max_test_steps
 
 
     % Get action from trained agent
-    M = getAction(agent, obs);
+    M = getAction(greedyPolicy, obs);
     M = M{1};  % Extract from cell array
     M = max(min(M(:), 10), -10);
+    M = [M;M];
 
     state = trackedRobotDynamics(state, M, dt);
     trajectory = [trajectory; state(1:2)'];
 
     % --- VISUALIZATION ---
-    if mod(step, 1) == 0
+    if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
-        plot(test_start(2)/res, test_start(1)/res, 'go', ...
-            'MarkerSize', 8, 'MarkerFaceColor', 'g');
+        % plot(test_start(2)/res, test_start(1)/res, 'go', ...
+        %     'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
             'MarkerSize', 18, 'LineWidth', 2);
         drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
@@ -192,134 +261,165 @@ for step = 1:max_test_steps
     end
 
     if dist_to_goal < 0.3
-        fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
-        break;
+        if a >= size(test_goals, 2)
+            fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
+            break;
+        end
+        a=a+1;
+        test_goal = test_goals(:,a) * res;
+        test_start = state(1:2);
+        reset(greedyPolicy);
     end
 
-    if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
-        fprintf('Stuck at step %d (%.2fm from goal)\n', step, dist_to_goal);
-        break;
-    end
+    % if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
+    %     fprintf('Stuck at step %d (%.2fm from goal)\n', step, dist_to_goal);
+    %     break;
+    % end
 end
+
 
 %% ========== ENVIRONMENT FUNCTIONS ==========
 
 function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignals, envData)
-    persistent state trajectory step_count
-    
-    if isempty(state)
-        [state, trajectory, step_count] = resetEnv(envData);
-    end
-    
-    step_count = step_count + 1;
-    
-    % Apply action
-    M = action;
-    state = trackedRobotDynamics(state, M, envData.dt);
-    
-    x = state(1); y = state(2); theta = state(3);
-    trajectory = [trajectory; x, y];
-    
-    % Get observation
-    
-    local_terrain = extractLocalTerrain(x, y, envData.map, envData.res, ...
-                                       envData.obs_radius, envData.obs_size);
-    
-    goal_dx = envData.goal_pos(1) - x;
-    goal_dy = envData.goal_pos(2) - y;
-    goal_heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
-    dist_to_goal   = norm(envData.goal_pos - [x; y]);
-    
-    terrain_vec = reshape(local_terrain, [], 1);
-    
-    nextObs = [
-        sin(theta);
-        cos(theta);
-        sin(goal_heading_error);
-        cos(goal_heading_error);
-        dist_to_goal / norm(envData.goal_pos - envData.start_pos);
-        state(4) / 5;
-        state(5) / 5;
-        terrain_vec
-    ];
-    
-    % Calculate reward
-    reward = calculateReward(state, envData.goal_pos, local_terrain, ...
-                         dist_to_goal, goal_heading_error);
-    
-    % Check termination + goal reward
-    isDone = false;
-    if dist_to_goal < 0.1
-        reward = reward + 1000;  % Big bonus for reaching goal
-        isDone = true;
-    elseif step_count >= 5000
-        isDone = true;
-    elseif any(isnan(state)) || any(isinf(state)) % Non real number penalty
-        reward = reward - 100;
-        isDone = true;
-    end
-    
-    % Check if stuck
-    if size(trajectory, 1) > 100
-        if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.3
-            reward = reward - 50;
-            isDone = true;
-        end
-    end
-    
-    loggedSignals = [];
-    
-    if isDone
-        state = [];
-    end
-end
 
-function [initObs, loggedSignals] = resetFcn(envData)
-    [state, ~, ~] = resetEnv(envData);
+    
+    state      = loggedSignals.state;
+    trajectory = loggedSignals.trajectory;
+    step_count = loggedSignals.step_count + 1;
+
+    M = [action;action];
+    state = trackedRobotDynamics(state, M, envData.dt);
 
     x     = state(1);
     y     = state(2);
     theta = state(3);
+    trajectory = [trajectory; x, y];
 
-    % Local terrain observation
-    local_terrain = extractLocalTerrain( ...
-        x, y, envData.map, envData.res, ...
-        envData.obs_radius, envData.obs_size);
-
+    local_terrain = extractLocalTerrain(x, y, loggedSignals.map, envData.res, ...
+                                        envData.obs_radius, envData.obs_size);
     terrain_vec = reshape(local_terrain, [], 1);
 
-    % Goal-related quantities
-    goal_dx = envData.goal_pos(1) - x;
-    goal_dy = envData.goal_pos(2) - y;
+    goal_dx = loggedSignals.goal_pos(1) - x;
+    goal_dy = loggedSignals.goal_pos(2) - y;
     dist_to_goal = hypot(goal_dx, goal_dy);
+    heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
 
-    goal_heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
-
-    % Initial observation
-    initObs = [
+    nextObs = [
         sin(theta);
         cos(theta);
-        sin(goal_heading_error);
-        cos(goal_heading_error);
-        dist_to_goal / norm(envData.goal_pos - envData.start_pos);
-        state(4) / 5;
-        state(5) / 5;
+        sin(heading_error);
+        cos(heading_error);
+        dist_to_goal / norm(loggedSignals.goal_pos - loggedSignals.start_pos);
+        state(4)/5; 
+        state(5)/5;
         terrain_vec
     ];
 
-    loggedSignals = [];
+    reward = calculateReward(state, loggedSignals.goal_pos, local_terrain, ...
+                             dist_to_goal, heading_error);
+
+    isDone = false;
+
+    if dist_to_goal < 0.3
+        reward = reward + 5000;  % Big bonus for reaching goal
+        isDone = true;
+    elseif step_count >= 5000
+        isDone = true;
+    elseif any(isnan(state)) || any(isinf(state))
+        reward = reward - 100;
+        isDone = true;
+    end
+
+    % --- Check Out of Bounds ---
+    [mapRows, mapCols] = size(loggedSignals.map);
+    maxX = mapCols * envData.res;
+    maxY = mapRows * envData.res;
+
+    if x < 0 || x > maxX || y < 0 || y > maxY
+        isDone = true;
+    end
+
+    % --- Check if stuck ---
+    if size(trajectory,1) > 100
+        if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.2
+            isDone = true;
+        end
+    end
+
+    % --- Update loggedSignals for next step ---
+    loggedSignals.state      = state;
+    loggedSignals.trajectory = trajectory;
+    loggedSignals.step_count = step_count;
+end
+
+function [initObs, loggedSignals] = resetFcn(envData)
+
+    % ----- Pick map -----
+    scenario_id = randi(numel(envData.scenarios));
+    scenario = envData.scenarios(scenario_id);
+
+    % ----- Pick route -----
+    route_id = randi(numel(scenario.routes));
+    route = scenario.routes(route_id);
+
+    % ----- Optional flip -----
+    if rand < 0.5
+        start_pos = route.start;
+        goal_pos  = route.goal;
+        flipped = false;
+    else
+        start_pos = route.goal;
+        goal_pos  = route.start;
+        flipped = true;
+    end
+
+    % ----- Store episode constants -----
+    loggedSignals.map        = scenario.map;
+    loggedSignals.start_pos  = start_pos;
+    loggedSignals.goal_pos   = goal_pos;
+    loggedSignals.scenario   = scenario_id;
+    loggedSignals.route_id   = route_id;
+    loggedSignals.flipped    = flipped;
+
+    % ----- Initialize robot -----
+    init_theta = rand * 2*pi - pi;
+    init_v = rand * 0.5;
+    state = [start_pos; init_theta; init_v; 0; 0; 0];
+
+    loggedSignals.state      = state;
+    loggedSignals.trajectory = start_pos';
+    loggedSignals.step_count = 0;
+
+    % ----- Initial observation -----
+    x = state(1); y = state(2); theta = state(3);
+
+    local_terrain = extractLocalTerrain( ...
+        x, y, loggedSignals.map, ...
+        envData.res, envData.obs_radius, envData.obs_size);
+
+    terrain_vec = reshape(local_terrain, [], 1);
+
+    goal_dx = goal_pos(1) - x;
+    goal_dy = goal_pos(2) - y;
+    dist_to_goal = hypot(goal_dx, goal_dy);
+    heading_error = wrapToPi(atan2(goal_dy, goal_dx) - theta);
+
+    initObs = [
+        sin(theta); cos(theta);
+        sin(heading_error); cos(heading_error);
+        dist_to_goal / norm(goal_pos - start_pos);
+        0; 0;
+        terrain_vec
+    ];
+    % fprintf("Episode start | Scenario %d | Route %d | Flipped %d\n", ...
+    %     loggedSignals.scenario, ...
+    %     loggedSignals.route_id, ...
+    %     loggedSignals.flipped);
+
 end
 
 
-function [state, trajectory, step_count] = resetEnv(envData)
 
-    init_pos = envData.start_pos;
-    init_theta = randn * 0.2;
-
-    state = [init_pos; init_theta; 0; 0; 0; 0];
-    trajectory = init_pos';
-    step_count = 0;
-end
 
 
 %% ========== HELPER FUNCTIONS ==========
@@ -334,24 +434,33 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
     hit_count = sum(hitbox(:)==1);
 
-    v = state(4);  
+    v = state(4);
+    theta = state(3);
     % z = state(6);
     % zdot = state(7);
     
     % vzdialenost
-    reward = -0.2 * dist_to_goal;
+    reward = -5 * dist_to_goal;
 
     % zasah do vinica
-    % reward = reward - 2 * hit_count;
+    reward = reward - 10 * hit_count;
     
     % smerovanie
-    reward = reward - 0.1 * abs(heading_error);
+    reward = reward - 5 * abs(heading_error);
 
     % rychlost
-    % terrain_difficulty = mean(hitbox(:),"all");  
-    % safe_speed = 1 * (1 - terrain_difficulty);
-    % speed_penalty = 2 * (v - safe_speed)^2;
-    % reward = reward - 0.5 * speed_penalty;
+    terrain_difficulty = mean(hitbox(:),"all");  
+    safe_speed = 1 * (1 - terrain_difficulty);
+    speed_penalty = 2 * (v - safe_speed)^4;
+    reward = reward - speed_penalty;
+
+    % spomaliť blízko k cieľu
+    if dist_to_goal < 1.5
+        max_allowed_speed = 1;
+        if v > max_allowed_speed
+            reward = reward - 10 * (v - max_allowed_speed)^2 - theta^2;
+        end
+    end
 
     % stabilita zmeny vysky
     % reward = reward - 0.2 * abs(z - 0.22);
@@ -365,87 +474,59 @@ end
 
 function net = buildActorNetwork(numObs)
     commonPath = [
-        sequenceInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(128, 'Name', 'fc1')
+        featureInputLayer(numObs, 'Name', 'observation')
+        fullyConnectedLayer(256, 'Name', 'fc1')
         reluLayer('Name', 'relu1')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm1')
-        fullyConnectedLayer(64, 'Name', 'fc2')
+        fullyConnectedLayer(128, 'Name', 'fc2')
         reluLayer('Name', 'relu2')
-        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm2')
-        fullyConnectedLayer(64, 'Name', 'fc3')
-        reluLayer('Name', 'relu3')
-        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm3')
-        fullyConnectedLayer(32, 'Name', 'fc4')
-        reluLayer('Name', 'relu4')
     ];
-
+    
     meanPath = [
-        fullyConnectedLayer(16, 'Name', 'mean_fc1')
-        reluLayer('Name', 'mean_relu')
-        fullyConnectedLayer(4, 'Name', 'mean_fc2')
+        fullyConnectedLayer(2, 'Name', 'mean_fc')
         tanhLayer('Name', 'mean_tanh')
         scalingLayer('Scale', 10, 'Name', 'mean_scale')
     ];
-
+    
     stdPath = [
-        fullyConnectedLayer(16, 'Name', 'std_fc1')
-        reluLayer('Name', 'std_relu')
-        fullyConnectedLayer(4, 'Name', 'std_fc2')
+        fullyConnectedLayer(2, 'Name', 'std_fc')
         softplusLayer('Name', 'std_softplus')
     ];
-
+    
     net = layerGraph(commonPath);
     net = addLayers(net, meanPath);
     net = addLayers(net, stdPath);
-    net = connectLayers(net, 'relu4', 'mean_fc1');
-    net = connectLayers(net, 'relu4', 'std_fc1');
+    
+    net = connectLayers(net, 'relu2', 'mean_fc');
+    net = connectLayers(net, 'relu2', 'std_fc');
 end
 
 function net = buildCriticNetwork(numObs)
     statePath = [
-        sequenceInputLayer(numObs, 'Name', 'state')
-        fullyConnectedLayer(128, 'Name', 'fc_s1')
-        reluLayer('Name', 'relu_s1')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_s1')
-        fullyConnectedLayer(64, 'Name', 'fc_s2')
-        reluLayer('Name', 'relu_s2')
-        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_s2')
-        fullyConnectedLayer(64, 'Name', 'fc_s3')
-        reluLayer('Name', 'relu_s3')
+        featureInputLayer(numObs, 'Name', 'state')
+        fullyConnectedLayer(256, 'Name', 'fc_s')
+        reluLayer('Name', 'relu_s')
     ];
-
+    
     actionPath = [
-        sequenceInputLayer(4, 'Name', 'action')
-        fullyConnectedLayer(128, 'Name', 'fc_a1')
-        reluLayer('Name', 'relu_a1')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm_a1')
-        fullyConnectedLayer(64, 'Name', 'fc_a2')
-        reluLayer('Name', 'relu_a2')
-        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_a2')
-        fullyConnectedLayer(64, 'Name', 'fc_a3')
-        reluLayer('Name', 'relu_a3')
+        featureInputLayer(2, 'Name', 'action')
+        fullyConnectedLayer(256, 'Name', 'fc_a')
+        reluLayer('Name', 'relu_a')
     ];
-
+    
     commonPath = [
         additionLayer(2, 'Name', 'add')
-        lstmLayer(64, 'OutputMode', 'sequence', 'Name', 'lstm_c1')
-        fullyConnectedLayer(64, 'Name', 'fc_c1')
-        reluLayer('Name', 'relu_c1')
-        lstmLayer(32, 'OutputMode', 'sequence', 'Name', 'lstm_c2')
-        fullyConnectedLayer(32, 'Name', 'fc_c2')
-        reluLayer('Name', 'relu_c2')
-        fullyConnectedLayer(16, 'Name', 'fc_c3')
-        reluLayer('Name', 'relu_c3')
+        fullyConnectedLayer(128, 'Name', 'fc_common')
+        reluLayer('Name', 'relu_common')
         fullyConnectedLayer(1, 'Name', 'output')
     ];
-
+    
     net = layerGraph(statePath);
     net = addLayers(net, actionPath);
     net = addLayers(net, commonPath);
-    net = connectLayers(net, 'relu_s3', 'add/in1');
-    net = connectLayers(net, 'relu_a3', 'add/in2');
+    
+    net = connectLayers(net, 'relu_s', 'add/in1');
+    net = connectLayers(net, 'relu_a', 'add/in2');
 end
-
 
 function local_map = extractLocalTerrain(x,y, map, res, radius, grid_size)
     half = floor(grid_size/2);
@@ -470,7 +551,6 @@ end
 
 function drawTrackedRobot(x, y, theta, L, y_offset, res)
 
-    % Robot corners (rectangle)
     corners_robot = [
         -L, -y_offset;
          L, -y_offset;
@@ -478,30 +558,25 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
         -L,  y_offset
     ];
 
-    % Rotation matrix
     R = [cos(theta) -sin(theta);
          sin(theta)  cos(theta)];
 
-    % Transform corners to world coordinates
     corners_world = (R * corners_robot')';
     corners_world(:,1) = corners_world(:,1) + x;
     corners_world(:,2) = corners_world(:,2) + y;
 
-    % World → map indices
-    col = corners_world(:,2) / res;   % Y → column
-    row = corners_world(:,1) / res;   % X → row
+    col = corners_world(:,2) / res;
+    row = corners_world(:,1) / res;
 
-    % Draw filled rectangle
     patch( ...
         col, row, 'r', ...
         'EdgeColor', 'r', ...
         'LineWidth', 0.1);
 
-    % --- Draw center-to-front line ---
-    front_x = x + (L) * cos(theta);  % front point X
-    front_y = y + (L) * sin(theta);  % front point Y
+    front_x = x + (L) * cos(theta);
+    front_y = y + (L) * sin(theta);
 
-    line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);  % black line
+    line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);
 end
 
 

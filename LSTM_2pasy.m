@@ -6,8 +6,8 @@ clear; clc; close all;
 addpath("kinematika_MR");
 coords1 = [280 400; 280 520; 400 520; 400 400];
 map1 = druhy('image.jpg', coords1);
-% coords2 = [475 1100; 475 1200; 575 1200; 575 1100];
-% map2 = druhy('image.jpg', coords2);
+coords2 = [475 1100; 475 1200; 575 1200; 575 1100];
+map2 = druhy('image.jpg', coords2);
 res = 0.1;  % map resolution [m/cell]
 % imagesc(map); colormap gray
 
@@ -16,19 +16,19 @@ res = 0.1;  % map resolution [m/cell]
 routes1(1).start = [10; 18] * res;
 routes1(1).goal  = [100; 10] * res;
 
-% routes1(2).start = [10; 38] * res;
-% routes1(2).goal  = [100; 28] * res;
+routes1(2).start = [10; 38] * res;
+routes1(2).goal  = [100; 28] * res;
 
 
 % -------- Map 2 routes --------
-% routes2(1).start = [85; 10] * res;
-% routes2(1).goal  = [69; 95] * res;
-% 
-% routes2(2).start = [56; 6] * res;
-% routes2(2).goal  = [39; 92] * res;
-% 
-% routes2(3).start = [64; 10] * res;
-% routes2(3).goal  = [39; 92] * res;
+routes2(1).start = [85; 10] * res;
+routes2(1).goal  = [69; 95] * res;
+
+routes2(2).start = [56; 6] * res;
+routes2(2).goal  = [39; 92] * res;
+
+routes2(3).start = [64; 10] * res;
+routes2(3).goal  = [39; 92] * res;
 
 obs_size   = 20;
 obs_radius = obs_size*res/2;
@@ -55,8 +55,8 @@ envData = struct();
 envData.scenarios(1).map    = map1;
 envData.scenarios(1).routes = routes1;
 
-% envData.scenarios(2).map    = map2;
-% envData.scenarios(2).routes = routes2;
+envData.scenarios(2).map    = map2;
+envData.scenarios(2).routes = routes2;
 
 envData.res        = res;
 envData.obs_radius = obs_radius;
@@ -170,8 +170,8 @@ agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== GET BEST AGENT =======
-foldername = 'savedAgents_uznefunguje';
-offset = 900;
+foldername = 'savedAgents1pas';
+offset = 0;
 
 files = dir(fullfile(foldername, 'Agent*.mat'));
 
@@ -202,14 +202,14 @@ fprintf('\n=== Testing Trained Agent ===\n');
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
 % map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
-map = imread("extraction.png");
+map = imread("extraction2.png");
 if size(map,3) == 3
     map = rgb2gray(map);
 end
 
 map=im2double(map);
 
-test_start = [87; 10] * res;
+test_start = [88; 10] * res;
 test_goal = [85; 90] * res;
 
 test_goals = [75 76 64 60; 
@@ -404,7 +404,7 @@ function [initObs, loggedSignals] = resetFcn(envData)
     route = scenario.routes(route_id);
 
     % ----- Optional flip -----
-    if rand < 2
+    if rand < 0.5
         start_pos = route.start;
         goal_pos  = route.goal;
         flipped = false;
@@ -423,10 +423,8 @@ function [initObs, loggedSignals] = resetFcn(envData)
     loggedSignals.flipped    = flipped;
 
     % ----- Initialize robot -----
-    % init_theta = rand * 2*pi - pi;
-    init_theta=0;
-    % init_v = rand * 0.5;
-    init_v=0;
+    init_theta = rand * 2*pi - pi;
+    init_v = rand * 0.5;
     state = [start_pos; init_theta; init_v; 0; 0; 0];
 
     loggedSignals.state      = state;
@@ -483,34 +481,34 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     % zdot = state(7);
     
     % vzdialenost
-    reward = -0.2 * dist_to_goal;
+    reward = -5 * dist_to_goal;
 
     % zasah do vinica
-    reward = reward - 20 * hit_count;
+    reward = reward - 10 * hit_count;
     
     % smerovanie
-    reward = reward - 5 * abs(heading_error);
+    % reward = reward - 5 * abs(heading_error);
 
-    % % rychlost
-    % terrain_difficulty = mean(hitbox(:),"all");  
-    % safe_speed = 1 * (1 - terrain_difficulty);
-    % speed_penalty = 2 * (v - safe_speed)^4;
-    % reward = reward - speed_penalty - theta^2*0.1;
-    % 
-    % % spomaliť blízko k cieľu
-    % if dist_to_goal < 2.5
-    %     max_allowed_speed = 0.5;
-    %     if v > max_allowed_speed
-    %         reward = reward - 0.05* (v - max_allowed_speed)^2;
-    %     end
-    % end
-    % 
-    % % stabilita zmeny vysky
-    % % reward = reward - 0.2 * abs(z - 0.22);
-    % % reward = reward - 0.1 * abs(zdot);
-    % 
-    % % casova penalizacia
-    % % reward = reward - 0.01;
+    % rychlost
+    terrain_difficulty = mean(hitbox(:),"all");  
+    safe_speed = 1 * (1 - terrain_difficulty);
+    speed_penalty = 2 * (v - safe_speed)^4;
+    reward = reward - speed_penalty;
+
+    % spomaliť blízko k cieľu
+    if dist_to_goal < 1.5
+        max_allowed_speed = 1;
+        if v > max_allowed_speed
+            reward = reward - 10 * (v - max_allowed_speed)^2 - theta^2;
+        end
+    end
+
+    % stabilita zmeny vysky
+    % reward = reward - 0.2 * abs(z - 0.22);
+    % reward = reward - 0.1 * abs(zdot);
+
+    % casova penalizacia
+    % reward = reward - 0.01;
 
 end
 

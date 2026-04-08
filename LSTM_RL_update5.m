@@ -1,10 +1,9 @@
 %% SAC Robot Navigation Training - A* Path Following
-% Uses Soft Actor-Critic (SAC) reinforcement learning to train robot navigation
 
 clear; clc; close all;
-addpath("kinematika_MR");
 
 %% ========== LOAD MAP ==========
+addpath("kinematika_MR");
 coords1 = [280 400; 280 520; 400 520; 400 400];
 map1 = druhy('image.jpg', coords1);
 coords2 = [475 1100; 475 1200; 575 1200; 575 1100];
@@ -131,41 +130,50 @@ agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== GET BEST AGENT =======
+foldername = 'savedAgents_uznefunguje';
+offset = 900;
 
-files = dir(fullfile('savedAgents', 'Agent*.mat'));
+files = dir(fullfile(foldername, 'Agent*.mat'));
 
 if ~isempty(files)
-    % Sort by date (descending) so the newest is at index 1
     [~, idx] = sort([files.datenum], 'descend');
     newestFile = fullfile(files(idx(1)).folder, files(idx(1)).name);
     
     % Load the data
     data = load(newestFile);
     rewards = data.savedAgentResult.EpisodeReward;
-    [maxVal, maxIdx] = max(rewards(11:end));
-    maxIdx=maxIdx+10;
+    [maxVal, maxIdx] = max(rewards(offset+1:end));
+    maxIdx=maxIdx+offset;
 else
     error('No agent files found in the directory.');
 end
 
 fprintf('Best agent: %i | Reward: %.1f\n', maxIdx, maxVal);
 fileName = sprintf('Agent%d.mat', maxIdx);
-filePath = fullfile('savedAgents', fileName);
+filePath = fullfile(foldername, fileName);
 data=load(filePath);
-agent = data.saved_agent;  % or data.Agent depending on MATLAB version
+agent = data.saved_agent;
 save('bestAgent.mat', 'agent');
 
 %% ========== TEST TRAINED AGENT ==========
-agent_cpu = setLearnableParameters( ...
-    agent, dlupdate(@gather, getLearnableParameters(agent)));
+close all;
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
-map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
-test_start = [86; 10] * res;
-test_goal = [85; 90] * res;
+greedyPolicy = getGreedyPolicy(agent);
+reset(greedyPolicy);
+% map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
+map = imread("extraction.png");
+if size(map,3) == 3
+    map = rgb2gray(map);
+end
 
-test_goals = [75 78 60 78 95; 
-            90 10 95 10 95];
+map=im2double(map);
+
+test_start = [87; 10] * res;
+test_goal = [85; 88] * res;
+
+test_goals = [75 76 64 60; 
+            90 26 26 95];
 
 % test_start = [85; 10] * res;
 % test_goal = [69; 95] * res;
@@ -211,7 +219,7 @@ for step = 1:max_test_steps
 
 
     % Get action from trained agent
-    M = getAction(agent, obs);
+    M = getAction(greedyPolicy, obs);
     M = M{1};  % Extract from cell array
     M = max(min(M(:), 10), -10);
 
@@ -219,12 +227,12 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     % --- VISUALIZATION ---
-    if mod(step, 1) == 0
+    if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
-        plot(test_start(2)/res, test_start(1)/res, 'go', ...
-            'MarkerSize', 8, 'MarkerFaceColor', 'g');
+        % plot(test_start(2)/res, test_start(1)/res, 'go', ...
+        %     'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
             'MarkerSize', 18, 'LineWidth', 2);
         drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
@@ -253,12 +261,14 @@ for step = 1:max_test_steps
     end
 
     if dist_to_goal < 0.3
-        if a >=3
+        if a >= size(test_goals, 2)
             fprintf('SUCCESS! Goal reached in %d steps (%.2fm)\n', step, dist_to_goal);
             break;
         end
         a=a+1;
         test_goal = test_goals(:,a) * res;
+        test_start = state(1:2);
+        reset(greedyPolicy);
     end
 
     % if step > 200 && norm(trajectory(end,:) - trajectory(end-50,:)) < 0.5
@@ -266,6 +276,17 @@ for step = 1:max_test_steps
     %     break;
     % end
 end
+subplot(1,4,1);
+hold on;
+plot(waypoints(:,2), waypoints(:,1), 'r*', 'MarkerSize',15 , 'LineWidth', 1);
+
+
+ax = subplot(1,4,1);
+drawnow; pause(0.01);
+frame = getframe(ax);
+im = frame2im(frame);
+imwrite(im, 'test1.png');
+
 
 
 %% ========== ENVIRONMENT FUNCTIONS ==========
@@ -306,7 +327,7 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
     ];
 
     reward = calculateReward(state, loggedSignals.goal_pos, local_terrain, ...
-                             dist_to_goal, heading_error);
+                             dist_to_goal, heading_error, M);
 
     isDone = false;
 
@@ -373,7 +394,8 @@ function [initObs, loggedSignals] = resetFcn(envData)
 
     % ----- Initialize robot -----
     init_theta = rand * 2*pi - pi;
-    state = [start_pos; init_theta; 0; 0; 0; 0];
+    init_v = rand * 0.5;
+    state = [start_pos; init_theta; init_v; 0; 0; 0];
 
     loggedSignals.state      = state;
     loggedSignals.trajectory = start_pos';
@@ -414,7 +436,7 @@ end
 %% ========== HELPER FUNCTIONS ==========
 
 function reward = calculateReward(state, goal_pos, terrain, ...
-                                 dist_to_goal, heading_error)
+                                 dist_to_goal, heading_error, M)
     res = 0.1;
     sizex= ceil(0.5/res/2);
     sizey= ceil(0.5/res/2);
@@ -432,7 +454,7 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     reward = -0.2 * dist_to_goal;
 
     % zasah do vinica
-    reward = reward - 10 * hit_count;
+    reward = reward - 20 * hit_count;
     
     % smerovanie
     reward = reward - 5 * abs(heading_error);
@@ -441,15 +463,20 @@ function reward = calculateReward(state, goal_pos, terrain, ...
     terrain_difficulty = mean(hitbox(:),"all");  
     safe_speed = 1 * (1 - terrain_difficulty);
     speed_penalty = 2 * (v - safe_speed)^4;
-    reward = reward - speed_penalty - theta^2;
+    reward = reward - speed_penalty - theta^2*0.1;
 
     % spomaliť blízko k cieľu
-    if dist_to_goal < 2.0
+    if dist_to_goal < 2.5
         max_allowed_speed = 0.5;
         if v > max_allowed_speed
-            reward = reward - (v - max_allowed_speed)^2;
+            reward = reward - 0.05* (v - max_allowed_speed)^2;
         end
     end
+
+    % penalizacia použitia rovnakych pasov opačne
+    left_pen  = max(0, -M(1) * M(3)); 
+    right_pen = max(0, -M(2) * M(4));
+    reward = reward - 1 * (left_pen + right_pen);
 
     % stabilita zmeny vysky
     % reward = reward - 0.2 * abs(z - 0.22);

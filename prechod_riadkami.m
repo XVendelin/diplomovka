@@ -1,5 +1,5 @@
 addpath("kinematika_MR");
-load("2_20_4_5.mat")
+% load("2_20_4_5.mat")
 
 %% ========== TEST TRAINED AGENT ==========
 agent_cpu = setLearnableParameters( ...
@@ -7,8 +7,15 @@ agent_cpu = setLearnableParameters( ...
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 map = imread("map2.png");
-test_start = [95; 20] * res;
-test_goal = [85; 90] * res;
+
+if size(map,3) == 3
+    map = rgb2gray(map);
+end
+
+map=im2double(map);
+
+test_start = [85; 18] * res;
+test_goal = [69; 95] * res;
 % test_start = [85; 10] * res;
 % test_goal = [69; 95] * res;
 
@@ -58,7 +65,7 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     % --- VISUALIZATION ---
-    if mod(step, 1) == 0
+    if mod(step, 3) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
