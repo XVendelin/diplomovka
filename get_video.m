@@ -8,7 +8,7 @@ fprintf('\n=== Testing Trained Agent with Video Recording ===\n');
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
 
-map = imread("extraction3.jpg");
+map = imread("image - Copy.jpg");
 if size(map,3) == 3
     map = rgb2gray(map);
 end

@@ -128,7 +128,7 @@ fprintf('Plotting Performance Summaries...\n');
 figure(2);
 plot(metrics_steps, smoothdata(rad2deg(metrics_smooth), 'movmean', 10), 'r', 'LineWidth', 1);
 grid on;
-title('Path Smoothness (Heading Change)');
+title('Heading Change');
 xlabel('Path Step'); 
 ylabel('Change in Direction (deg)');
 
