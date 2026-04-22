@@ -67,6 +67,12 @@ v_new     = v     + a_long * dt;
 omega_new = omega + a_yaw  * dt;
 zdot_new  = zdot  + zddot  * dt;
 
+%% --- LIMITOVANIE RÝCHLOSTÍ (Saturácia) ---
+max_v = 5;
+max_omega = 3;
+v_new     = max(min(v_new, max_v), -max_v);
+omega_new = max(min(omega_new, max_omega), -max_omega);
+
 %% === INTEGRÁCIA POLOHY ===
 if abs(omega_new) < 1e-6
     x_new = x + v_new * dt * cos(theta);
