@@ -89,29 +89,30 @@ agentOpts = rlTD3AgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 1024, ...
-    'NumWarmStartSteps', 2000, ...
+    'MiniBatchSize', 1024*2, ...
+    'NumWarmStartSteps', 5000, ...
     'SequenceLength', 10, ...      
     'TargetSmoothFactor', 0.005, ...
-    'TargetUpdateFrequency', 2);
+    'TargetUpdateFrequency', 4, ...
+    'ResetExperienceBufferBeforeTraining', true);
 
 
-agentOpts.ActorOptimizerOptions.LearnRate = 3e-3;
-agentOpts.ActorOptimizerOptions.GradientThreshold = 1;
+agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;
+agentOpts.ActorOptimizerOptions.GradientThreshold = 5;
 
-agentOpts.CriticOptimizerOptions(1).LearnRate = 3e-3;
-agentOpts.CriticOptimizerOptions(1).GradientThreshold = 1;
-agentOpts.CriticOptimizerOptions(2).LearnRate = 3e-3;
-agentOpts.CriticOptimizerOptions(2).GradientThreshold = 1;
+agentOpts.CriticOptimizerOptions(1).LearnRate = 3e-4;
+agentOpts.CriticOptimizerOptions(1).GradientThreshold = 5;
+agentOpts.CriticOptimizerOptions(2).LearnRate = 3e-4;
+agentOpts.CriticOptimizerOptions(2).GradientThreshold = 5;
 
 % Create agent
 agent = rlTD3Agent(actor, [critic1, critic2], agentOpts);
 
 %% ========== TRAINING OPTIONS ==========
 
-% agent.AgentOptions.ExplorationModel.StandardDeviation = 0.5;
-% agent.AgentOptions.ExplorationModel.StandardDeviationDecayRate = 1e-5;
-% agent.AgentOptions.ExplorationModel.StandardDeviationMin = 0.05;
+agent.AgentOptions.ExplorationModel.StandardDeviation = 0.5;
+agent.AgentOptions.ExplorationModel.StandardDeviationDecayRate = 1e-5;
+agent.AgentOptions.ExplorationModel.StandardDeviationMin = 0.05;
 
 trainOpts = rlTrainingOptions(...
     'MaxEpisodes', 5000, ...
@@ -123,8 +124,8 @@ trainOpts = rlTrainingOptions(...
     'StopTrainingValue', 5000, ...
     'UseParallel', false, ...
     'SaveAgentCriteria', "EpisodeReward", ...
-    "SaveAgentValue", 3000, ...
-    "SaveAgentDirectory", 'savedForTD3');
+    "SaveAgentValue", 300, ...
+    "SaveAgentDirectory", 'savedAgents_TD3');
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting TD3 Training ===\n');
@@ -132,8 +133,8 @@ agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== GET BEST AGENT =======
-foldername = 'savedForTD3';
-offset = 1000;
+foldername = 'savedAgents_TD3_naj';
+offset = 1700;
 
 files = dir(fullfile(foldername, 'Agent*.mat'));
 
@@ -174,8 +175,8 @@ map=im2double(map);
 test_start = [87; 10] * res;
 test_goal = [85; 88] * res;
 
-test_goals = [75 76 64 60; 
-            90 26 26 95];
+test_goals = [75 76 67 62; 
+            90 26 26 90];
 
 % test_start = [85; 10] * res;
 % test_goal = [69; 95] * res;
@@ -228,10 +229,10 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     % --- VISUALIZATION ---
-    if mod(step, 1) == 0
+    if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
-        plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
+        plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 1.5);
         % plot(test_start(2)/res, test_start(1)/res, 'go', ...
         %     'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
@@ -277,6 +278,11 @@ for step = 1:max_test_steps
     %     break;
     % end
 end
+
+subplot(1,4,1);
+hold on;
+plot(test_goals(2,:), test_goals(1,:), 'r*', 'MarkerSize', 20, 'LineWidth', 1.5);
+plot(88, 85, 'r*', 'MarkerSize', 20, 'LineWidth', 1.5);
 
 
 %% ========== ENVIRONMENT FUNCTIONS ==========
@@ -456,7 +462,7 @@ function reward = calculateReward(state, init_dist, terrain, ...
     center=ceil(size(terrain,1)/2);
 
     hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
-    % hit_count = sum(hitbox(:)==1);
+    hit_count = sum(hitbox(:)==1);
 
     % norm_dist = dist_to_goal/init_dist;
     % norm_prev_dist = prev_dist/init_dist;
@@ -473,7 +479,7 @@ function reward = calculateReward(state, init_dist, terrain, ...
     % reward = reward - 10 * hit_count;
     
     % zasah do vinica
-    % reward = reward - 0.5 * hit_count;
+    reward = reward - 3 * hit_count;
     
     % smerovanie
     reward = reward - 5 * heading_error^2;

@@ -74,44 +74,45 @@ env = rlFunctionEnv(obsInfo, actInfo, ...
 %% ========== CREATE PPO AGENT ==========
 fprintf('Building PPO agent...\n');
 
-% Create critic networks (Q-functions)
-criticNetwork = buildCriticNetwork(numObs);
+critic = rlValueFunction(buildCriticNetwork(numObs), obsInfo, ...
+    'ObservationInputNames', 'observation');  % <-- must match layer name
 
-critic = rlValueFunction(criticNetwork, obsInfo);
-
-% Create actor network (policy)
 actorNetwork = buildActorNetwork(numObs);
 actor = rlContinuousGaussianActor(actorNetwork, obsInfo, actInfo, ...
     'ObservationInputNames', 'observation', ...
     'ActionMeanOutputNames', 'mean_scale', ...
     'ActionStandardDeviationOutputNames', 'std_softplus');
 
-% PPO agent options
 agentOpts = rlPPOAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
-    'ExperienceHorizon', 1024, ...
-    'MiniBatchSize', 512, ...
-    'ClipFactor', 0.2, ...        % PPO clipping epsilon
-    'EntropyLossWeight', 0.01);   % Encourages exploration
+    'ExperienceHorizon', 3000, ...   % more experience before update
+    'MiniBatchSize', 256, ...        % smaller batches = more gradient steps
+    'NumEpoch', 10, ...              % PPO-specific: reuse each batch 10x
+    'ClipFactor', 0.2, ...
+    'EntropyLossWeight', 0.05, ...   % more exploration early on
+    'GAEFactor', 0.95);              % generalized advantage estimation
 
-agentOpts.ActorOptimizerOptions.LearnRate = 5e-6;
-agentOpts.CriticOptimizerOptions.LearnRate = 1e-5;
+agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;   % match SAC
+agentOpts.ActorOptimizerOptions.GradientThreshold = 0.5;  % clip gradients
+
+agentOpts.CriticOptimizerOptions.LearnRate = 3e-4;  % critic learns faster
+agentOpts.CriticOptimizerOptions.GradientThreshold = 0.5;
 
 % Create PPO Agent
 agent = rlPPOAgent(actor, critic, agentOpts);
 
 %% ========== TRAINING OPTIONS ==========
 trainOpts = rlTrainingOptions(...
-    'MaxEpisodes', 100000, ...
-    'MaxStepsPerEpisode', 1000, ...
-    'ScoreAveragingWindowLength', 10, ...
+    'MaxEpisodes', 50000, ...
+    'MaxStepsPerEpisode', 3000, ...
+    'ScoreAveragingWindowLength', 50, ...
     'Plots', 'training-progress', ...
     'StopTrainingCriteria', 'AverageReward', ...
     'StopTrainingValue', 5000, ...
     'SaveAgentCriteria', "EpisodeReward", ...
-    "SaveAgentValue", 500, ...
-    "SaveAgentDirectory", 'savedAgents_PPO');
+    'SaveAgentValue', 500, ...
+    'SaveAgentDirectory', 'savedAgents_PPO');
 
 %% ========== TRAIN AGENT ==========
 fprintf('\n=== Starting PPO Training ===\n');
@@ -119,8 +120,8 @@ agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== GET BEST AGENT =======
-foldername = 'savedAgentsPPO';
-offset = 2100;
+foldername = 'savedAgents_PPO4';
+offset = 9900;
 
 files = dir(fullfile(foldername, 'Agent*.mat'));
 
@@ -158,14 +159,17 @@ end
 
 map=im2double(map);
 
+% test_start = [87; 11] * res;
+% test_goal = [84; 88] * res;
+% 
+% test_goals = [75 76 64 60; 
+%             89 24 28 95];
+
 test_start = [87; 11] * res;
-test_goal = [84; 90] * res;
+test_goal = [84; 87] * res;
 
-test_goals = [75 76 64 60; 
+test_goals = [74 76 66 60; 
             89 24 28 95];
-
-% test_start = [85; 10] * res;
-% test_goal = [69; 95] * res;
 
 state = [test_start; pi/2; 0; 0; 0; 0];
 % state(1:2)  = [test_start];
@@ -219,7 +223,7 @@ for step = 1:max_test_steps
     if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
-        plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
+        plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 1);
         % plot(test_start(2)/res, test_start(1)/res, 'go', ...
         %     'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
@@ -267,7 +271,8 @@ for step = 1:max_test_steps
 end
 subplot(1,4,1);
 hold on;
-plot(waypoints(:,2), waypoints(:,1), 'r*', 'MarkerSize',15 , 'LineWidth', 1);
+plot(test_goals(2,:), test_goals(1,:), 'r*', 'MarkerSize',15 , 'LineWidth', 1);
+plot(87, 84, 'r*', 'MarkerSize',15 , 'LineWidth', 1);
 
 
 ax = subplot(1,4,1);
@@ -332,13 +337,13 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
         reward = reward + 100;  % Big bonus for reaching goal
         isDone = true;
     elseif step_count >= 5000
-        reward = reward - 500;
+        reward = reward - 50;
         isDone = true;
     elseif any(isnan(state)) || any(isinf(state))
-        reward = reward - 500;
+        reward = reward - 50;
         isDone = true;
     elseif sum(hitbox(:) == 1) >= 5
-        reward = reward - 500;
+        reward = reward - 50;
         isDone = true;
     end
 
@@ -348,14 +353,14 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
     maxY = mapRows * envData.res;
 
     if x < 0 || x > maxX || y < 0 || y > maxY
-        reward = reward - 500;
+        reward = reward - 50;
         isDone = true;
     end
 
     % --- Check if stuck ---
     if size(trajectory,1) > 100
         if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.2
-            reward = reward - 500;
+            reward = reward - 50;
             isDone = true;
         end
     end
@@ -502,11 +507,10 @@ end
 
 function net = buildActorNetwork(numObs)
     commonPath = [
-        sequenceInputLayer(numObs, 'Name', 'observation')
-        fullyConnectedLayer(256, 'Name', 'fc_pre_lstm')
+        featureInputLayer(numObs, 'Name', 'observation')   % featureInput, not sequenceInput
+        fullyConnectedLayer(256, 'Name', 'fc1')
         reluLayer('Name', 'relu_pre')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'lstm') 
-        fullyConnectedLayer(128, 'Name', 'fc_common3')
+        fullyConnectedLayer(128, 'Name', 'fc2')
         reluLayer('Name', 'relu_common3')
     ];
     
@@ -529,11 +533,12 @@ function net = buildActorNetwork(numObs)
 end
 
 function net = buildCriticNetwork(numObs)
-net = [
-        sequenceInputLayer(numObs, 'Name', 'state')
+    net = [
+        featureInputLayer(numObs, 'Name', 'observation')  % <-- change sequenceInputLayer to featureInputLayer
         fullyConnectedLayer(256, 'Name', 'fc1')
         reluLayer('Name', 'relu1')
-        lstmLayer(128, 'OutputMode', 'sequence', 'Name', 'critic_lstm')
+        fullyConnectedLayer(256, 'Name', 'fc2')
+        reluLayer('Name', 'relu2')
         fullyConnectedLayer(128, 'Name', 'fc3')
         reluLayer('Name', 'relu3')
         fullyConnectedLayer(1, 'Name', 'output')

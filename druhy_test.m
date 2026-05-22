@@ -26,12 +26,13 @@ save('bestAgent.mat', 'agent');
 
 %% ========== TEST TRAINED AGENT ==========
 close all;
+clear metrics_steps metrics_speed metrics_smooth metrics_safety metrics_hitcount metrics_distance;
 addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
-% map = druhy("image.jpg", [700 500; 700 600; 800 600; 800 500]);
-map = imread("image - Copy.jpg");
+map = imread("extraction.png");
+% map = imread("image - Copy.jpg");
 if size(map,3) == 3
     map = rgb2gray(map);
 end
@@ -40,16 +41,27 @@ map=im2double(map);
 
 res=0.1;
 
-test_start = [15; 13] * res;
-test_goal = [102; 12] * res;
+% test_start = [87; 11] * res;
+% test_goal = [84; 90] * res;
+% 
+% test_goals = [75 76 64 60; 
+%             89 24 28 95];
 
-test_goals = [97 58 42 45 102 100 77 34; 
-             28 32 45 57 60 78 78 77];
+% test_start = [15; 14] * res;
+% test_goal = [102; 13] * res;
+% 
+% test_goals = [99 58 43 43 100 100 77 34; 
+%              28 32 40 51 60 78 77 77];
 
-% test_start = [85; 10] * res;
-% test_goal = [69; 95] * res;
 
-state = [test_start; 0; 0; 0; 0; 0];
+test_start = [88; 5] * res;
+test_goal = [86; 89] * res;
+
+test_goals = [75 78 67 62; 
+            90 26 26 89];
+
+
+state = [test_start; pi/2; 0; 0; 0; 0];
 % state(1:2)  = [test_start];
 
 trajectory = state(1:2)';
@@ -60,7 +72,10 @@ max_test_steps = 2000;
 a=0;
 prev_M = 0;
 
+total_dist_traveled = 0; % Initialize distance counter
+
 for step = 1:max_test_steps
+    old_pos = state(1:2);
     x = state(1); y = state(2); theta = state(3); v = state(4); omega = state(5);
 
     local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
@@ -79,12 +94,16 @@ for step = 1:max_test_steps
     M = max(min(M(:), 10), -10);
 
     state = trackedRobotDynamics(state, M, dt);
+    % --- DISTANCE CALCULATION ---
+    new_pos = state(1:2);
+    step_length = hypot(new_pos(1) - old_pos(1), new_pos(2) - old_pos(2));
+    total_dist_traveled = total_dist_traveled + step_length;
     trajectory = [trajectory; state(1:2)'];
 
     % --- METRIC CALCULATION (Inside Loop) ---
     res = 0.1;
-    sizex= ceil(0.5/res/2);
-    sizey= ceil(0.5/res/2);
+    sizex= floor(0.5/res/2);
+    sizey= floor(0.5/res/2);
     center=ceil(size(local_terrain,1)/2);
 
     hitbox = local_terrain (center-sizey:center+sizey, center-sizex:center+sizex);
@@ -109,7 +128,7 @@ for step = 1:max_test_steps
     prev_M = M; % Update prev_M for the next step
 
     % --- VISUALIZATION ---
-    if mod(step, 4) == 5
+    if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 1);
@@ -155,9 +174,9 @@ for step = 1:max_test_steps
 end
 
 
-subplot(1,4,1);
-hold on;
-plot(waypoints(:,2), waypoints(:,1), 'r*', 'MarkerSize', 15, 'LineWidth', 1);
+% subplot(1,4,1);
+% hold on;
+% plot(waypoints(:,2), waypoints(:,1), 'r*', 'MarkerSize', 15, 'LineWidth', 1);
 
 
 ax = subplot(1,4,1); 
@@ -167,30 +186,52 @@ im = frame2im(frame);
 imwrite(im, 'test2.png');
 
 %% ========== FINAL PERFORMANCE SUMMARY ==========
+fprintf('Final Path Distance: %.2f meters\n', total_dist_traveled);
 figure(2);
 plot(metrics_steps, smoothdata(metrics_smooth, 'movmean', 10), 'r', 'LineWidth', 1);
 grid on;
-title('Path Smoothness (Heading Change)');
-xlabel('Path Step'); 
-ylabel('Change in Direction (deg)');
+title('Zmena smeru');
+xlabel('Krok'); 
+ylabel('Zmena smeru (°)');
 
 figure(3);
 plot(metrics_steps, metrics_safety*100);
 average_safety = sum(metrics_safety)/length(metrics_safety);
 hold on;
-plot([0, 474], [average_safety, average_safety]*100, 'r--');
+plot([0, length(metrics_safety)], [average_safety, average_safety]*100, 'r--');
 hold off;
-title('Safety Metric Along Path');
-xlabel('Path Step'); ylabel('Obstacle Density in Local Window (%)');
-legend('Current Safety', sprintf('Average: %.1f%%', average_safety*100));
+title('Nebezpečenstvo prechodu');
+xlabel('Krok simulácie'); ylabel('Hustota neprichodnosti (%)');
+legend('Aktuálna obtiažnosť terénu', sprintf('Priemer: %.1f%%', average_safety*100));
 grid on;
 
 figure(4);
 plot(metrics_steps, metrics_distance);
+
 figure(5);
-plot(metrics_steps, metrics_safety*10);
+clf;
+
+% Left axis (blue)
+yyaxis left;
+p1 = plot(metrics_steps, metrics_safety, '-b', 'LineWidth', 1.5);
+ylabel('Hustota neprichodnosti (%)');
+ax = gca;
+ax.YColor = [0 0 1]; % ensure left y-axis color is blue
+
 hold on;
-plot(metrics_steps, metrics_speed);
+
+% Right axis (red)
+yyaxis right;
+p2 = plot(metrics_steps, metrics_speed, '-r', 'LineWidth', 1.5);
+ylabel('Rýchlosť');
+ax = gca;
+ax.YColor = [1 0 0]; % ensure right y-axis color is red
+
+% Common labels and legend
+xlabel('Krok simulácie');
+legend([p1 p2], {'Aktuálna obtiažnosť terénu','Rýchlosť'}, 'Location', 'best');
+grid on;
+hold off;
 
 
 %% ========== HELPER FUNCTIONS ==========

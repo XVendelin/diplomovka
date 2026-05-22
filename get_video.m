@@ -15,8 +15,8 @@ end
 map = im2double(map);
 
 % --- Goal Sequence Setup ---
-test_goals = [102 97 58 42 45 102 100 77 34; 
-             12 28 32 45 57 60 78 78 77];
+test_goals = [102 99 50 42 45 102 100 77 34; 
+             12 28 32 38 54 60 78 78 77];
 goal_idx = 1;
 
 % Initialize Start State
@@ -78,7 +78,7 @@ for step = 1:max_test_steps
     trajectory = [trajectory; state(1:2)'];
 
     %% ---------- VISUALIZATION (Every 4 steps) ----------
-    if mod(step, 2) == 0
+    if mod(step, 5) == 0
         clf;
         
         % 1. Global Map

@@ -14,16 +14,16 @@ res = 0.1;  % map resolution [m/cell]
 %% ========== CONFIGURATION ==========
 % -------- Map 1 routes --------
 
-routes1(1).start = [10; 18] * res;
-routes1(1).goal  = [100; 10] * res;
+routes1(1).start = [10; 19] * res;
+routes1(1).goal  = [98; 10] * res;
 
-routes1(2).start = [10; 38] * res;
+routes1(2).start = [12; 38] * res;
 routes1(2).goal  = [100; 28] * res;
 
 
 % -------- Map 2 routes --------
-routes2(1).start = [85; 10] * res;
-routes2(1).goal  = [69; 95] * res;
+routes2(1).start = [86; 11] * res;
+routes2(1).goal  = [70; 91] * res;
 
 routes2(2).start = [56; 6] * res;
 routes2(2).goal  = [39; 92] * res;
@@ -93,20 +93,21 @@ agentOpts = rlSACAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
     'ExperienceBufferLength', 1e6, ...
-    'MiniBatchSize', 1024/2, ...
+    'MiniBatchSize', 1024*2, ...
     'NumWarmStartSteps', 5000, ...
     'SequenceLength', 10, ...      
     'TargetSmoothFactor', 0.005, ...
-    'TargetUpdateFrequency', 1);
+    'TargetUpdateFrequency', 2, ...
+    'ResetExperienceBufferBeforeTraining', true);
 
 
-agentOpts.ActorOptimizerOptions.LearnRate = 2e-4;
-agentOpts.ActorOptimizerOptions.GradientThreshold = 1;
+agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;
+agentOpts.ActorOptimizerOptions.GradientThreshold = 5;
 
-agentOpts.CriticOptimizerOptions(1).LearnRate = 2e-4;
-agentOpts.CriticOptimizerOptions(1).GradientThreshold = 1;
-agentOpts.CriticOptimizerOptions(2).LearnRate = 2e-4;
-agentOpts.CriticOptimizerOptions(2).GradientThreshold = 1;
+agentOpts.CriticOptimizerOptions(1).LearnRate = 3e-4;
+agentOpts.CriticOptimizerOptions(1).GradientThreshold = 5;
+agentOpts.CriticOptimizerOptions(2).LearnRate = 3e-4;
+agentOpts.CriticOptimizerOptions(2).GradientThreshold = 5;
 
 % Create agent
 agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
@@ -114,7 +115,7 @@ agent = rlSACAgent(actor, [critic1, critic2], agentOpts);
 %% ========== TRAINING OPTIONS ==========
 trainOpts = rlTrainingOptions(...
     'MaxEpisodes', 5000, ...
-    'MaxStepsPerEpisode', 1000, ...
+    'MaxStepsPerEpisode', 500, ...
     'ScoreAveragingWindowLength', 10, ...
     'Verbose', false, ...
     'Plots', 'training-progress', ...
@@ -132,8 +133,8 @@ agent = setLearnableParameters(agent, dlupdate(@gpuArray, getLearnableParameters
 trainingStats = train(agent, env, trainOpts);
 
 %% ========== GET BEST AGENT =======
-foldername = 'savedAgents_novy1';
-offset = 2700;
+foldername = 'savedAgents_novy2_naj';
+offset = 2100;
 
 files = dir(fullfile(foldername, 'Agent*.mat'));
 
@@ -171,11 +172,11 @@ end
 
 map=im2double(map);
 
-test_start = [87; 10] * res;
-test_goal = [85; 88] * res;
+test_start = [87; 11] * res;
+test_goal = [84; 90] * res;
 
 test_goals = [75 76 64 60; 
-            90 26 26 95];
+            89 24 28 95];
 
 % test_start = [85; 10] * res;
 % test_goal = [69; 95] * res;
@@ -300,7 +301,8 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
     trajectory = loggedSignals.trajectory;
     step_count = loggedSignals.step_count + 1;
 
-    M = action;
+    M = max(min(action, 10), -10);
+
     state = trackedRobotDynamics(state, M, envData.dt);
 
     x     = state(1);
@@ -312,8 +314,8 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
                                         envData.obs_radius, envData.obs_size);
     terrain_vec = reshape(local_terrain, [], 1);
 
-    sizex= ceil(0.5/0.1/2);
-    sizey= ceil(0.5/0.1/2);
+    sizex= floor(0.5/0.1/2);
+    sizey= floor(0.5/0.1/2);
     center=ceil(size(local_terrain,1)/2);
     hitbox = local_terrain (center-sizey:center+sizey, center-sizex:center+sizex);
 
@@ -344,13 +346,13 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
         reward = reward + 100;  % Big bonus for reaching goal
         isDone = true;
     elseif step_count >= 5000
-        reward = reward - 100;
+        reward = reward - 500;
         isDone = true;
     elseif any(isnan(state)) || any(isinf(state))
-        reward = reward - 100;
+        reward = reward - 500;
         isDone = true;
-    elseif sum(hitbox(:) == 1) >=5
-        reward = reward -100;
+    elseif sum(hitbox(:) == 1) >= 5
+        reward = reward - 500;
         isDone = true;
     end
 
@@ -360,14 +362,14 @@ function [nextObs, reward, isDone, loggedSignals] = stepFcn(action, loggedSignal
     maxY = mapRows * envData.res;
 
     if x < 0 || x > maxX || y < 0 || y > maxY
-        reward = reward - 100;
+        reward = reward - 500;
         isDone = true;
     end
 
     % --- Check if stuck ---
     if size(trajectory,1) > 100
         if norm(trajectory(end,:) - trajectory(end-50,:)) < 0.2
-            reward = reward - 100;
+            reward = reward - 500;
             isDone = true;
         end
     end
@@ -439,10 +441,17 @@ function [initObs, loggedSignals] = resetFcn(envData)
         0; 0;
         terrain_vec
     ];
-    % fprintf("Episode start | Scenario %d | Route %d | Flipped %d\n", ...
+
+    % sizex= floor(0.5/0.1/2);
+    % sizey= floor(0.5/0.1/2);
+    % center=ceil(size(local_terrain,1)/2);
+    % hitbox = local_terrain (center-sizey:center+sizey, center-sizex:center+sizex);
+    % hitcount=sum(hitbox(:)==1);
+    % fprintf("Episode start | Scenario %d | Route %d | Flipped %d | Num %d\n", ...
     %     loggedSignals.scenario, ...
     %     loggedSignals.route_id, ...
-    %     loggedSignals.flipped);
+    %     loggedSignals.flipped, ...
+    %     hitcount);
 
 end
 
@@ -454,36 +463,46 @@ end
 
 function reward = calculateReward(state, init_dist, terrain, ...
                                  dist_to_goal, prev_dist, heading_error)
-    % res = 0.1;
-    % sizex= ceil(0.5/res/2);
-    % sizey= ceil(0.5/res/2);
-    % center=ceil(size(terrain,1)/2);
+    res = 0.1;
+    sizex= floor(0.5/res/2);
+    sizey= floor(0.5/res/2);
+    center=ceil(size(terrain,1)/2);
 
-    % hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
+    hitbox = terrain (center-sizey:center+sizey, center-sizex:center+sizex);
     % hit_count = sum(hitbox(:)==1);
 
-    norm_dist = dist_to_goal/init_dist;
-    norm_prev_dist = prev_dist/init_dist;
-    % v = state(4);
+    % norm_dist = dist_to_goal/init_dist;
+    % norm_prev_dist = prev_dist/init_dist;
+    v = state(4);
     % theta = state(3);
     % z = state(6);
     % zdot = state(7);
 
     % progres
-    reward = 200 * (norm_prev_dist-norm_dist);
-
+    reward = 0;
+    if v < 3
+        reward = 100 * (prev_dist - dist_to_goal);
+    end
+    % reward = reward - 10 * hit_count;
+    
     % zasah do vinica
     % reward = reward - 0.5 * hit_count;
     
     % smerovanie
-    reward = reward + (1 - abs(heading_error));
+    reward = reward - 5 * heading_error^2;
+    reward = reward + 1 * (1 - heading_error^2);
 
     % rychlost
+    % if v > 0.5 && v < 3
+    %     reward = reward + 1;
+    % end
 
-    % terrain_difficulty = mean(hitbox(:),"all");  
-    % safe_speed = 1 * (1 - terrain_difficulty);
-    % speed_penalty = 2 * (v - safe_speed)^4;
-    % reward = reward - speed_penalty;
+    terrain_difficulty = mean(hitbox(:),"all");
+    safe_speed = 2 * (1 - terrain_difficulty);
+    if abs(v) > safe_speed
+        speed_penalty = 5 * (abs(v) - safe_speed)^2;
+        reward = reward - speed_penalty;
+    end
 
     % spomaliť blízko k cieľu
     % if dist_to_goal < 2.5

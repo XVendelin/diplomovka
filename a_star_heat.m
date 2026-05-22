@@ -20,8 +20,8 @@ clc; clear; close all;
 %             100 10]; % goal
 
 %% new waypoints
-waypoints = [15 13; 102 12; 97 28; 58 32; 42 45; 45 57; 102 60; 100 78; 77 78; 34 77];
-waypoints2 = [87 10; 85 88; 75 90; 76 26; 64 26; 60 95];
+waypoints2 = [15 13; 102 12; 97 28; 58 32; 42 45; 45 57; 102 60; 100 78; 77 78; 34 77];
+waypoints = [87 10; 85 88; 75 90; 76 26; 64 26; 60 95];
 %% Compute path through all waypoints
 fullPath = [];
 for i = 1:(size(waypoints,1)-1)
@@ -66,6 +66,7 @@ metrics_hitcount = zeros(1, num_steps);
 metrics_distance = zeros(1, num_steps);
 metrics_speed = zeros(1, num_steps);
 metrics_smooth = zeros(1, num_steps);
+total_distance_traveled = 0;
 
 % Define local window size for safety calculation (e.g., 5x5 grid)
 window_radius = 2; 
@@ -97,6 +98,15 @@ for step = 1:num_steps
     
     % 4. Smoothness (Change in heading angle) & Speed
     if step > 2
+
+        % Calculate the distance of the current segment
+        v_curr = fullPath(step, :) - fullPath(step-1, :);
+        step_dist = norm(v_curr);
+        
+        % ACCUMULATE THE DISTANCE HERE
+        total_distance_traveled = total_distance_traveled + step_dist;
+        
+        metrics_speed(step) = step_dist;
         % Vector of previous step and current step
         v_prev = fullPath(step-1, :) - fullPath(step-2, :);
         v_curr = fullPath(step, :) - fullPath(step-1, :);
@@ -124,24 +134,26 @@ end
 %% ========== FINAL PERFORMANCE SUMMARY ==========
 fprintf('Plotting Performance Summaries...\n');
 
+fprintf('Total Distance Traveled: %.2f m\n', total_distance_traveled*0.1);
+
 % Figure 2: Direction Change (Heading Jitter)
 figure(2);
 plot(metrics_steps, smoothdata(rad2deg(metrics_smooth), 'movmean', 10), 'r', 'LineWidth', 1);
 grid on;
-title('Heading Change');
-xlabel('Path Step'); 
-ylabel('Change in Direction (deg)');
+title('Zmena smeru');
+xlabel('Krok'); 
+ylabel('Zmena smeru v stupňoch)');
 
 % Figure 3: Cumulative Safety
 figure(3);
-plot(metrics_steps, metrics_safety * 100, 'b', 'LineWidth', 1.5);
+plot(metrics_steps, metrics_safety * 100);
 average_safety = sum(metrics_safety) / length(metrics_safety);
 hold on;
-plot([1, num_steps], [average_safety, average_safety] * 100, 'r--', 'LineWidth', 1);
+plot([1, num_steps], [average_safety, average_safety] * 100, 'r--');
 hold off;
-title('Safety Metric Along Path');
-xlabel('Path Step'); ylabel('Obstacle Density in Local Window (%)');
-legend('Current Safety', sprintf('Average: %.1f%%', average_safety*100));
+title('Bezpečnosť prechodu');
+xlabel('Priebehové kroky'); ylabel('Hustota neprichodnosti (%)');
+legend('Aktuálna obtiažnosť terénu', sprintf('priemer: %.1f%%', average_safety*100));
 grid on;
 
 
