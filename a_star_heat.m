@@ -58,7 +58,7 @@ imwrite(im, 'astar_test1.png');
 %% ========== A* METRICS CALCULATION ==========
 fprintf('\n=== Computing Metrics for A* Path ===\n');
 
-% Preallocate metric arrays
+
 num_steps = size(fullPath, 1);
 metrics_steps = 1:num_steps;
 metrics_safety = zeros(1, num_steps);
@@ -68,58 +68,55 @@ metrics_speed = zeros(1, num_steps);
 metrics_smooth = zeros(1, num_steps);
 total_distance_traveled = 0;
 
-% Define local window size for safety calculation (e.g., 5x5 grid)
+
 window_radius = 2; 
 final_goal = waypoints(end, :);
 
 for step = 1:num_steps
-    % 1. Current Position
     r = fullPath(step, 1); % Row (Y)
     c = fullPath(step, 2); % Col (X)
+
     
-    % 2. Safety & Hitcount (Extract local terrain window)
     r_min = max(1, r - window_radius);
     r_max = min(size(map, 1), r + window_radius);
     c_min = max(1, c - window_radius);
     c_max = min(size(map, 2), c + window_radius);
     
     local_window = map(r_min:r_max, c_min:c_max);
+
     
-    % Assuming '1' or high values represent obstacles/elevation
-    hitbox = (local_window >= 0.8); % Adjust threshold if map is not purely 0 and 1
+    hitbox = (local_window >= 0.8);
     hit_count = sum(hitbox(:));
     
     metrics_safety(step) = hit_count / numel(hitbox); 
     metrics_hitcount(step) = hit_count;
+
     
-    % 3. Distance to final goal
     dist_to_goal = hypot(final_goal(2) - c, final_goal(1) - r);
     metrics_distance(step) = dist_to_goal;
+
     
-    % 4. Smoothness (Change in heading angle) & Speed
     if step > 2
 
-        % Calculate the distance of the current segment
         v_curr = fullPath(step, :) - fullPath(step-1, :);
         step_dist = norm(v_curr);
+
         
-        % ACCUMULATE THE DISTANCE HERE
         total_distance_traveled = total_distance_traveled + step_dist;
         
         metrics_speed(step) = step_dist;
-        % Vector of previous step and current step
+        
         v_prev = fullPath(step-1, :) - fullPath(step-2, :);
         v_curr = fullPath(step, :) - fullPath(step-1, :);
+
         
-        % Calculate angles (Heading)
         theta_prev = atan2(v_prev(1), v_prev(2));
         theta_curr = atan2(v_curr(1), v_curr(2));
+
         
-        % Direction change (Smoothness)
-        % wrapToPi ensures that a turn from 179 deg to -179 deg is 2 deg, not 358.
         metrics_smooth(step) = abs(wrapToPi(theta_curr - theta_prev));
+
         
-        % Speed calculation
         metrics_speed(step) = norm(v_curr);
     elseif step == 2
         v_curr = fullPath(step, :) - fullPath(step-1, :);
@@ -136,7 +133,7 @@ fprintf('Plotting Performance Summaries...\n');
 
 fprintf('Total Distance Traveled: %.2f m\n', total_distance_traveled*0.1);
 
-% Figure 2: Direction Change (Heading Jitter)
+
 figure(2);
 plot(metrics_steps, smoothdata(rad2deg(metrics_smooth), 'movmean', 10), 'r', 'LineWidth', 1);
 grid on;
@@ -144,7 +141,7 @@ title('Zmena smeru');
 xlabel('Krok'); 
 ylabel('Zmena smeru v stupňoch)');
 
-% Figure 3: Cumulative Safety
+
 figure(3);
 plot(metrics_steps, metrics_safety * 100);
 average_safety = sum(metrics_safety) / length(metrics_safety);
