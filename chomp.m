@@ -72,23 +72,22 @@ function path = chomp_height(map, start, goal)
         return;
     end
 
-    % ==== Parameters ====
     N = 500;
     lambda = 20;
     alpha = 5;
     eta = 0.0005;
     maxIter = 1000;
 
-    % ==== Initialize straight line ====
+
     path = [linspace(start(1), goal(1), N)', linspace(start(2), goal(2), N)'];
 
-    % ==== Laplacian (smoothness operator) ====
+
     K = eye(N);
     for i = 2:N-1
         K(i, i-1:i+1) = [1 -2 1];
     end
 
-    % ==== Optimization loop ====
+
     for iter = 1:maxIter
         grad_smooth = alpha * (K' * K * path);
         grad_terrain = zeros(size(path));
