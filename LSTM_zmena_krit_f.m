@@ -172,14 +172,11 @@ end
 
 map=im2double(map);
 
-test_start = [87; 11] * res;
-test_goal = [84; 90] * res;
+test_start = [0; 0] * res;
+test_goal = [0; 0] * res;
 
-test_goals = [75 76 64 60; 
-            89 24 28 95];
-
-% test_start = [85; 10] * res;
-% test_goal = [69; 95] * res;
+test_goals = [0 0
+              0 0];
 
 state = [test_start; pi/2; 0; 0; 0; 0];
 % state(1:2)  = [test_start];
