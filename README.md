@@ -22,7 +22,7 @@ Skript používa vlastné prostredie na základe `rlFunctionEnv`, lokálnu detek
 
 ## Ako spustiť tréning
 
-1. Otvorte MATLAB a nastavte pracovný adresár na `c:\Users\vendo\Desktop\temp\diplomovka`.
+1. Otvorte MATLAB a nastavte pracovný adresár.
 2. Uistite sa, že sú pridané potrebné cesty:
    ```matlab
    addpath("kinematika_MR");
