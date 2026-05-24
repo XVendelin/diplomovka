@@ -8,7 +8,6 @@ if ~isempty(files)
     [~, idx] = sort([files.datenum], 'descend');
     newestFile = fullfile(files(idx(1)).folder, files(idx(1)).name);
     
-    % Load the data
     data = load(newestFile);
     rewards = data.savedAgentResult.EpisodeReward;
     [maxVal, maxIdx] = max(rewards(offset+1:end));
@@ -32,7 +31,6 @@ addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
-% map = imread("extraction.png");
 map = imread("image - Copy.jpg");
 if size(map,3) == 3
     map = rgb2gray(map);
@@ -50,17 +48,15 @@ test_goals = [0 0
 
 
 state = [test_start; pi/2; 0; 0; 0; 0];
-% state(1:2)  = [test_start];
 
 trajectory = state(1:2)';
 
 max_test_steps = 2000;
 
-% figure('Position', [100, 100, 1500, 600]);
 a=0;
 prev_M = 0;
 
-total_dist_traveled = 0; % Initialize distance counter
+total_dist_traveled = 0; 
 
 for step = 1:max_test_steps
     old_pos = state(1:2);
@@ -82,13 +78,11 @@ for step = 1:max_test_steps
     M = max(min(M(:), 10), -10);
 
     state = trackedRobotDynamics(state, M, dt);
-    % --- DISTANCE CALCULATION ---
     new_pos = state(1:2);
     step_length = hypot(new_pos(1) - old_pos(1), new_pos(2) - old_pos(2));
     total_dist_traveled = total_dist_traveled + step_length;
     trajectory = [trajectory; state(1:2)'];
 
-    % --- METRIC CALCULATION (Inside Loop) ---
     res = 0.1;
     sizex= floor(0.5/res/2);
     sizey= floor(0.5/res/2);
@@ -111,17 +105,13 @@ for step = 1:max_test_steps
 
     metrics_smooth(step) = sum(abs(M(:) - prev_M(:)));
     metrics_steps(step) = step;
-    % ----------------------------------------
     
-    prev_M = M; % Update prev_M for the next step
+    prev_M = M; 
 
-    % --- VISUALIZATION ---
     if mod(step, 4) == 0
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 1);
-        % plot(test_start(2)/res, test_start(1)/res, 'go', ...
-        %     'MarkerSize', 8, 'MarkerFaceColor', 'g');
         plot(test_goal(2)/res, test_goal(1)/res, 'r*', ...
             'MarkerSize', 15, 'LineWidth', 1);
         drawTrackedRobot(x, y, theta, 0.25, 0.25, res);
@@ -162,11 +152,6 @@ for step = 1:max_test_steps
 end
 
 
-% subplot(1,4,1);
-% hold on;
-% plot(waypoints(:,2), waypoints(:,1), 'r*', 'MarkerSize', 15, 'LineWidth', 1);
-
-
 ax = subplot(1,4,1); 
 drawnow; pause(0.01);
 frame = getframe(ax);
@@ -199,23 +184,20 @@ plot(metrics_steps, metrics_distance);
 figure(5);
 clf;
 
-% Left axis (blue)
 yyaxis left;
 p1 = plot(metrics_steps, metrics_safety, '-b', 'LineWidth', 1.5);
 ylabel('Hustota neprichodnosti (%)');
 ax = gca;
-ax.YColor = [0 0 1]; % ensure left y-axis color is blue
+ax.YColor = [0 0 1]; 
 
 hold on;
 
-% Right axis (red)
 yyaxis right;
 p2 = plot(metrics_steps, metrics_speed, '-r', 'LineWidth', 1.5);
 ylabel('Rýchlosť');
 ax = gca;
-ax.YColor = [1 0 0]; % ensure right y-axis color is red
+ax.YColor = [1 0 0]; 
 
-% Common labels and legend
 xlabel('Krok simulácie');
 legend([p1 p2], {'Aktuálna obtiažnosť terénu','Rýchlosť'}, 'Location', 'best');
 grid on;
@@ -275,5 +257,3 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
 
     line([y, front_y]/res, [x, front_x]/res, 'Color', 'k', 'LineWidth', 1);
 end
-
-
