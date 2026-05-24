@@ -24,6 +24,7 @@ data=load(filePath);
 agent = data.saved_agent;
 save('bestAgent.mat', 'agent');
 
+
 %% ========== TEST TRAINED AGENT ==========
 close all;
 clear metrics_steps metrics_speed metrics_smooth metrics_safety metrics_hitcount metrics_distance;
