@@ -1,4 +1,4 @@
-%% PPO Robot Navigation Training - A* Path Following
+%% PPO Robot Navigation Training
 
 clear; clc; close all;
 
@@ -12,7 +12,6 @@ res = 0.1;  % map resolution [m/cell]
 % imagesc(map); colormap gray
 
 %% ========== CONFIGURATION ==========
-% -------- Map 1 routes --------
 
 routes1(1).start = [10; 19] * res;
 routes1(1).goal  = [98; 10] * res;
@@ -39,7 +38,7 @@ dt           = 0.05;
 %% ========== CREATE RL ENVIRONMENT ==========
 fprintf('\nCreating RL environment...\n');
 
-% Define observation info
+
 local_terrain_size = obs_size * obs_size;
 numObs = 7 + local_terrain_size;  % sin/cos theta, distances, velocities, terrain
 
@@ -47,11 +46,11 @@ obsInfo = rlNumericSpec([numObs 1]);
 obsInfo.Name = 'Robot State';
 obsInfo.Description = 'Robot pose, velocities, and local terrain';
 
-% Define action info (4 motor torques)
+
 actInfo = rlNumericSpec([4 1], 'LowerLimit', -10, 'UpperLimit', 10);
 actInfo.Name = 'Motor Torques';
 
-% Create environment data structure to pass to functions
+
 envData = struct();
 envData.scenarios(1).map    = map1;
 envData.scenarios(1).routes = routes1;
@@ -66,7 +65,7 @@ envData.dt         = dt;
 
 
 
-% Create custom environment
+
 env = rlFunctionEnv(obsInfo, actInfo, ...
     @(action,loggedSignals) stepFcn(action, loggedSignals, envData), ...
     @() resetFcn(envData));
@@ -86,20 +85,20 @@ actor = rlContinuousGaussianActor(actorNetwork, obsInfo, actInfo, ...
 agentOpts = rlPPOAgentOptions(...
     'SampleTime', dt, ...
     'DiscountFactor', 0.99, ...
-    'ExperienceHorizon', 3000, ...   % more experience before update
-    'MiniBatchSize', 256, ...        % smaller batches = more gradient steps
-    'NumEpoch', 10, ...              % PPO-specific: reuse each batch 10x
+    'ExperienceHorizon', 3000, ...
+    'MiniBatchSize', 256, ...
+    'NumEpoch', 10, ...
     'ClipFactor', 0.2, ...
-    'EntropyLossWeight', 0.05, ...   % more exploration early on
-    'GAEFactor', 0.95);              % generalized advantage estimation
+    'EntropyLossWeight', 0.05, ...
+    'GAEFactor', 0.95); 
 
-agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;   % match SAC
-agentOpts.ActorOptimizerOptions.GradientThreshold = 0.5;  % clip gradients
+agentOpts.ActorOptimizerOptions.LearnRate = 3e-4;
+agentOpts.ActorOptimizerOptions.GradientThreshold = 0.5; 
 
-agentOpts.CriticOptimizerOptions.LearnRate = 3e-4;  % critic learns faster
+agentOpts.CriticOptimizerOptions.LearnRate = 3e-4;
 agentOpts.CriticOptimizerOptions.GradientThreshold = 0.5;
 
-% Create PPO Agent
+
 agent = rlPPOAgent(actor, critic, agentOpts);
 
 %% ========== TRAINING OPTIONS ==========
@@ -205,7 +204,7 @@ for step = 1:max_test_steps
         ];
 
 
-    % Get action from trained agent
+
     M = getAction(greedyPolicy, obs);
     M = M{1};  % Extract from cell array
     M = max(min(M(:), 10), -10);
