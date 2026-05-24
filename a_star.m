@@ -1,14 +1,12 @@
 clc; clear; close all;
 
-%% Load map
 coords = [280 400; 280 520; 
-         400 520; 400 400];
+          400 520; 400 400];
 map = druhy('image.jpg', coords);
 
 nmap = map; 
 nmap(nmap ~= 1) = 0;
 
-%% Define waypoints
 waypoints = [10 20;
             100 10;
             100 18;
@@ -28,9 +26,8 @@ waypoints = [10 20;
             10 103;
             100 95;
             10 size(map,2)-10;
-            size(map,1)-20, size(map,2)-15]; % goal
+            size(map,1)-20, size(map,2)-15];
 
-%% Compute A* path through all waypoints
 fullPath = [];
 for i = 1:(size(waypoints,1)-1)
     start = waypoints(i,:);
@@ -43,13 +40,12 @@ for i = 1:(size(waypoints,1)-1)
     end
 
     if i > 1
-        segment = segment(2:end,:); % avoid duplicate point
+        segment = segment(2:end,:);
     end
 
     fullPath = [fullPath; segment];
 end
 
-%% Display full path
 figure;
 imshow(nmap, []); 
 hold on;
@@ -58,12 +54,10 @@ plot(waypoints(:,2), waypoints(:,1), 'go', 'MarkerSize',10,'MarkerFaceColor','g'
 title('A* Path');
 
 
-%% ---- STANDARD NORMAL A* FUNCTION (NO HEIGHT COST) ----
 function path = astar_normal(map, start, goal)
 
     [rows, cols] = size(map);
 
-    % Treat "1" as obstacle (same as you had)
     if map(start(1), start(2)) == 1 || map(goal(1), goal(2)) == 1
         path = [];
         return;
@@ -78,16 +72,13 @@ function path = astar_normal(map, start, goal)
     fScore(start(1), start(2)) = heuristic(start, goal);
     openSet(start(1), start(2)) = true;
 
-    % A*
     while any(openSet(:))
-        % Node with minimum fScore in openSet
         maskedFS = fScore;
         maskedFS(~openSet) = inf;
         [~, idx] = min(maskedFS(:));
         [cr, cc] = ind2sub(size(map), idx);
         current = [cr, cc];
 
-        % Reached goal
         if all(current == goal)
             path = current;
             while any(cameFrom(path(1,1), path(1,2),:))
@@ -99,16 +90,15 @@ function path = astar_normal(map, start, goal)
 
         openSet(cr, cc) = false;
 
-        % Explore neighbors
         for dr = -1:1
             for dc = -1:1
                 if dr == 0 && dc == 0, continue; end
                 nr = cr + dr; nc = cc + dc;
                 if nr < 1 || nr > rows || nc < 1 || nc > cols, continue; end
 
-                if map(nr, nc) == 1, continue; end % obstacle
+                if map(nr, nc) == 1, continue; end
 
-                cost = sqrt(dr^2 + dc^2); % normal 8-direction step cost
+                cost = sqrt(dr^2 + dc^2);
                 tentative = gScore(cr, cc) + cost;
 
                 if tentative < gScore(nr, nc)
@@ -121,12 +111,10 @@ function path = astar_normal(map, start, goal)
         end
     end
 
-    % Failed to find path
     path = [];
 end
 
 
-%% ---- MANHATTAN HEURISTIC ----
 function h = heuristic(p, goal)
     h = abs(p(1) - goal(1)) + abs(p(2) - goal(2));
 end
