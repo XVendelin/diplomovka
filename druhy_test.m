@@ -31,8 +31,8 @@ addpath("kinematika_MR");
 fprintf('\n=== Testing Trained Agent ===\n');
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
-map = imread("extraction.png");
-% map = imread("image - Copy.jpg");
+% map = imread("extraction.png");
+map = imread("image - Copy.jpg");
 if size(map,3) == 3
     map = rgb2gray(map);
 end
@@ -41,24 +41,11 @@ map=im2double(map);
 
 res=0.1;
 
-% test_start = [87; 11] * res;
-% test_goal = [84; 90] * res;
-% 
-% test_goals = [75 76 64 60; 
-%             89 24 28 95];
+test_start = [0; 0] * res;
+test_goal = [0; 0] * res;
 
-% test_start = [15; 14] * res;
-% test_goal = [102; 13] * res;
-% 
-% test_goals = [99 58 43 43 100 100 77 34; 
-%              28 32 40 51 60 78 77 77];
-
-
-test_start = [88; 5] * res;
-test_goal = [86; 89] * res;
-
-test_goals = [75 78 67 62; 
-            90 26 26 89];
+test_goals = [0 0
+              0 0];
 
 
 state = [test_start; pi/2; 0; 0; 0; 0];
