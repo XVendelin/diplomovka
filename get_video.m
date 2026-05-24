@@ -1,10 +1,8 @@
-%% ========== TEST TRAINED AGENT (WITH VIDEO + GIF + MULTI-GOAL) ==========
+%% ========== TEST TRAINED AGENT  ==========
 close all;
 addpath("kinematika_MR");
-fprintf('\n=== Testing Trained Agent with Video Recording ===\n');
 
 % --- Load Agent and Map ---
-% Note: Ensure 'agent', 'res', 'obs_radius', 'obs_size', 'dt' are in workspace or loaded
 greedyPolicy = getGreedyPolicy(agent);
 reset(greedyPolicy);
 
@@ -14,18 +12,16 @@ if size(map,3) == 3
 end
 map = im2double(map);
 
-% --- Goal Sequence Setup ---
 test_goals = [102 99 50 42 45 102 100 77 34; 
              12 28 32 38 54 60 78 78 77];
 goal_idx = 1;
 
-% Initialize Start State
 test_start = [15; 13] * res;
 current_goal = test_goals(:, goal_idx) * res;
 
 state = [test_start; 0; 0; 0; 0; 0];
 trajectory = state(1:2)';
-max_test_steps = 5000; % Increased for multiple goals
+max_test_steps = 5000;
 
 %% ---------- VIDEO + GIF SETUP ----------
 videoFile = 'agent_multi_goal.mp4';
@@ -37,7 +33,6 @@ open(vwriter);
 
 gifDelay = 1 / vwriter.FrameRate;
 isFirstGifFrame = true;
-% ---------------------------------------
 
 figure('Position', [100, 100, 1500, 600]);
 
@@ -48,7 +43,6 @@ for step = 1:max_test_steps
     v     = state(4);
     omega = state(5);
 
-    % --- Observation Prep ---
     local_terrain = extractLocalTerrain(x, y, map, res, obs_radius, obs_size);
     terrain_vec   = reshape(local_terrain, [], 1);
 
@@ -68,20 +62,17 @@ for step = 1:max_test_steps
         terrain_vec
     ];
 
-    % --- Get Action ---
     M = getAction(greedyPolicy, obs);
     M = M{1};
     M = max(min(M(:), 10), -10);
 
-    % --- Update Physics ---
     state = trackedRobotDynamics(state, M, dt);
     trajectory = [trajectory; state(1:2)'];
 
-    %% ---------- VISUALIZATION (Every 4 steps) ----------
+    %% ---------- VISUALIZATION ----------
     if mod(step, 5) == 0
         clf;
         
-        % 1. Global Map
         subplot(1,4,1);
         imagesc(map); colormap gray; hold on;
         plot(trajectory(:,2)/res, trajectory(:,1)/res, 'g-', 'LineWidth', 2);
@@ -90,20 +81,17 @@ for step = 1:max_test_steps
         title(sprintf('Step %d | Goal %d | Dist: %.2fm', step, goal_idx, dist_to_goal));
         axis equal tight; hold off;
 
-        % 2. Motor Torques
         subplot(1,4,2);
         bar(M); ylim([-12 12]); grid on;
         title('Motor Torques (Nm)');
         xticklabels({'FL','FR','RL','RR'});
 
-        % 3. Velocities
         subplot(1,4,3);
         bar([v omega]); ylim([-5 5]); grid on;
         title('Speeds');
         xticklabels({'Linear','Angular'});
         ylabel('m/s | rad/s');
 
-        % 4. Local Sensor View
         subplot(1,4,4);
         imagesc(local_terrain, [min(map(:)) max(map(:))]);
         colormap(gca, 'gray'); colorbar;
@@ -140,7 +128,6 @@ for step = 1:max_test_steps
         end
     end
 
-    % Optional: Stuck detection
     if step > 500 && norm(trajectory(end,:) - trajectory(end-100,:)) < 0.1
         fprintf('Robot appears stuck at step %d. Terminating.\n', step);
         break;
@@ -149,8 +136,6 @@ end
 
 %% ---------- CLEANUP ----------
 close(vwriter);
-fprintf('\nFiles saved:\n- %s\n- %s\n', videoFile, gifFile);
-% close all; % Uncomment to close figure window automatically
 
 %% ========== HELPER FUNCTIONS ==========
 
@@ -177,7 +162,6 @@ end
 
 function drawTrackedRobot(x, y, theta, L, y_offset, res)
 
-    % Robot corners (rectangle)
     corners_robot = [
         -L, -y_offset;
          L, -y_offset;
@@ -185,26 +169,21 @@ function drawTrackedRobot(x, y, theta, L, y_offset, res)
         -L,  y_offset
     ];
 
-    % Rotation matrix
     R = [cos(theta) -sin(theta);
          sin(theta)  cos(theta)];
 
-    % Transform corners to world coordinates
     corners_world = (R * corners_robot')';
     corners_world(:,1) = corners_world(:,1) + x;
     corners_world(:,2) = corners_world(:,2) + y;
 
-    % World → map indices
     col = corners_world(:,2) / res;   % Y → column
     row = corners_world(:,1) / res;   % X → row
 
-    % Draw filled rectangle
     patch( ...
         col, row, 'r', ...
         'EdgeColor', 'r', ...
         'LineWidth', 0.1);
 
-    % --- Draw center-to-front line ---
     front_x = x + (L) * cos(theta);  % front point X
     front_y = y + (L) * sin(theta);  % front point Y
 
