@@ -100,7 +100,7 @@ path_follow_distance = 100.0;
 %% ========== CREATE RL ENVIRONMENT ==========
 fprintf('\nCreating RL environment...\n');
 
-% Define observation info
+
 local_terrain_size = obs_size * obs_size;
 numObs = 8 + local_terrain_size;  % sin/cos theta, distances, velocities, terrain
 
@@ -108,7 +108,6 @@ obsInfo = rlNumericSpec([numObs 1]);
 obsInfo.Name = 'Robot State';
 obsInfo.Description = 'Robot pose, velocities, and local terrain';
 
-% Define action info (4 motor torques)
 actInfo = rlNumericSpec([4 1], 'LowerLimit', -10, 'UpperLimit', 10);
 actInfo.Name = 'Motor Torques';
 
@@ -124,7 +123,6 @@ envData.obs_size = obs_size;
 envData.dt = dt;
 envData.path_follow_distance = path_follow_distance;
 
-% Create custom environment
 env = rlFunctionEnv(obsInfo, actInfo, ...
     @(action,loggedSignals) stepFcn(action, loggedSignals, envData), ...
     @() resetFcn(envData));
@@ -224,7 +222,6 @@ for step = 1:max_test_steps
         terrain_vec
     ];
 
-    % Get action from trained agent
     M = getAction(agent, obs);
     M = M{1};  % Extract from cell array
     M = max(min(M(:), 10), -10);
